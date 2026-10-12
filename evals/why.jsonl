@@ -1,0 +1,13 @@
+{"id": "W01", "org": "backstage", "question": "Why don't we use node-fetch in backend code?", "expected": {"decisions": ["backstage/ADR014"], "must_mention": ["native fetch", "Node.js 20"], "sources": ["adr014-use-fetch.md"]}}
+{"id": "W02", "org": "backstage", "question": "Is ADR013 still valid?", "expected": {"decisions": ["backstage/ADR013", "backstage/ADR014"], "must_mention": ["superseded", "ADR014"]}}
+{"id": "W03", "org": "backstage", "question": "Which date library should new code use, and why not Moment.js?", "expected": {"decisions": ["backstage/ADR010"], "must_mention": ["Luxon"], "sources": ["adr010-luxon-date-library.md"]}}
+{"id": "W04", "org": "backstage", "question": "How should tests mock network requests?", "expected": {"decisions": ["backstage/ADR007"], "must_mention": ["msw"]}}
+{"id": "W05", "org": "backstage", "question": "Can I type new components with React.FC?", "expected": {"decisions": ["backstage/ADR006"], "must_mention": ["avoid"]}}
+{"id": "W06", "org": "backstage", "question": "Should isomorphic packages depend on cross-fetch?", "expected": {"decisions": ["backstage/ADR014"], "must_mention": ["cross-fetch"]}, "note": "yes: guards against wrongly answering 'avoid all fetch libraries'"}
+{"id": "W07", "org": "kubernetes", "question": "Who approved node swap support?", "expected": {"decisions": ["kubernetes/KEP-2400"], "must_mention": ["derekwaynecarr", "dchen1107"]}}
+{"id": "W08", "org": "kubernetes", "question": "Why can't I just set --fail-swap-on=false to enable swap?", "expected": {"decisions": ["kubernetes/KEP-2400"], "must_mention": ["system daemons"], "sources": ["2400-node-swap/README.md"]}}
+{"id": "W09", "org": "kubernetes", "question": "Which feature gate controls node swap, and which components does it affect?", "expected": {"decisions": ["kubernetes/KEP-2400"], "must_mention": ["NodeSwap", "kubelet", "kube-apiserver"]}}
+{"id": "W10", "org": "kubernetes", "question": "What did the CPU Manager KEP replace?", "expected": {"decisions": ["kubernetes/KEP-3570"], "must_mention": ["375-cpumanager"]}, "note": "the replaced KEP folder is not in the repository: answer must say it is unresolved, not invent its content"}
+{"id": "W11", "org": "backstage", "question": "What is our policy on GraphQL APIs?", "expected": {"decisions": [], "no_recorded_decision": true}, "note": "no ADR covers this: must say so, not guess"}
+{"id": "W12", "org": "precedent", "question": "Why is FalkorDB the only data store?", "expected": {"decisions": ["precedent/ADR0002"], "must_mention": ["one graph per org"]}}
+{"id": "W13", "org": "precedent", "question": "Is ADR0005 still valid?", "expected": {"decisions": ["precedent/ADR0005", "precedent/ADR0006"], "must_mention": ["superseded", "Langfuse"]}}

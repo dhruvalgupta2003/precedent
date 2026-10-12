@@ -41,8 +41,8 @@ Every connector yields this shape (Pydantic v2). It is the only contract between
 
 ```python
 class Scope(BaseModel):
-    kind: Literal["path", "package", "component", "feature_gate", "config"]
-    value: str  # "plugins/*-backend/**", "node-fetch", "kubelet", "NodeSwap"
+    kind: Literal["path", "package", "symbol", "component", "feature_gate", "config"]
+    value: str  # "plugins/*-backend/**", "node-fetch", "React.FC", "kubelet", "NodeSwap"
     polarity: Literal["applies", "prefer", "avoid", "require"] = "applies"
 
 
@@ -76,6 +76,8 @@ class DecisionRecord(BaseModel):
     scopes: list[Scope] = []
     alternatives: list[Alternative] = []
     supersedes: list[str] = []  # decision ids
+    unresolved: list[str] = []  # references that resolve to no known decision: reported, never invented
+    needs_review: bool = False  # e.g. an unknown status value: flagged, never guessed
     rationale: str | None = None
     sources: list[SourceRef]
 ```
@@ -119,6 +121,7 @@ class DecisionRecord(BaseModel):
 ```
 
 ### Rules
+- Scope kind `symbol` covers code identifiers (`React.FC`, `export default`); found while writing eval cases E03, P03, P04.
 - **Never delete.** A changed fact sets `invalid_at` on the old edge and creates a new one.
 - A decision is **current** iff `status = "accepted"` and no incoming valid `SUPERSEDES`.
 - A decision can **BLOCK** iff current **and** `confirmed` **and** `tier in {"structured","capture"}`.
@@ -151,9 +154,12 @@ def records(source: str, org: str) -> Iterator[DecisionRecord]: ...
 | `github` (stretch) | `owner/repo` | PR/issue ids, authors, labels, merged/closed, linked ADR/KEP refs, changed paths | decision candidates from description + review threads (tier `semi`, unconfirmed) |
 | `capture` | MCP/CLI/API call | everything given by caller | none; status `proposed`, confirmed=False |
 
-Verified data points:
-- Backstage `docs/architecture-decisions/` has ADR001–ADR015 with front-matter `title`; ADR013 title contains `[superseded]` and a `:::note[Superseded]` block linking ADR014.
-- KEP `kep.yaml` (e.g. KEP-2400) has `kep-number`, `authors`, `owning-sig`, `participating-sigs`, `status`, `creation-date`, `reviewers`, `approvers`, `stage`, `latest-milestone`, `milestone`, `feature-gates[{name, components}]`; README has `## Alternatives`, `### Non-Goals`, `## Implementation History`.
+Verified data points (Day-0 checks, 2026-10-13; snapshots: backstage@0863f03, kubernetes/enhancements@8659e38):
+- **Backstage:** 15 ADRs (`adr001`–`adr015`). The folder also holds `adr000-template.md` and `index.md`; the connector must skip both (a template is not a decision). Front matter has only `id`, `title`, `description` — **no status field in any ADR**. Status rule: superseded if the title contains `[superseded]` or the body has a `:::note[Superseded]` block (only ADR013, linking `./adr014-use-fetch.md`); otherwise accepted. Sections are `Context` / `Decision` / `Consequences` (no `Alternatives`), so rejected options must be extracted from prose by the LLM (tier `semi`, unconfirmed for those facts).
+- **KEPs:** 686 `kep.yaml` (139 in sig-node); 2 fail to parse → skip and report, never crash. `approvers` 100%, `reviewers` 98%; `feature-gates[].components` 57% overall, **83% in sig-node** (deterministic scopes).
+- **Alternatives:** `## Alternatives` in 79% of KEPs; with real (non-comment) content in 58% overall and **70% of sig-node** (median 130 words; 53 sig-node KEPs list options as `###` sub-headings). The parser must strip `<!-- -->` template comments and keep `###` sub-sections inside `## Alternatives` (stop only at the next `#`/`##`).
+- **Supersession is sparse in KEPs:** `replaces` 7% (sig-node 9%), `superseded-by` 2%, prose mentions ~0%. `replaces` values are mixed (URLs, file paths, `N/A`, `none`, bare numbers, template placeholders) → normalise; keep only references that resolve to a KEP id or `keps/…` path. Real chain: **KEP-3570 (cpumanager) replaces `keps/sig-node/375-cpumanager`**. Backstage ADR013→ADR014 carries the main supersession demo.
+- **KEP status values are messy:** `implemented` 301, `implementable` 295, `provisional` 61, `withdrawn` 11, `replaced` 6, `rejected` 3, plus `superseded`, `removed`, `deferred`, a typo `imlpemented`, `implemented (alpha)`, the literal template string and missing values → normalise known variants; anything else is flagged for review, never guessed.
 
 ---
 
@@ -311,7 +317,7 @@ Dependency rule (enforced by `import-linter`, see `pyproject.toml`): `surfaces �
 ## 11. Acceptance — golden set (must pass before demo)
 
 **Ingest**
-- Backstage: 15 ADRs → 15 `Decision`; ADR014 `SUPERSEDES` ADR013; ADR013 status `superseded`.
+- Backstage: 15 ADRs → 15 `Decision` (template and index skipped); ADR014 `SUPERSEDES` ADR013; ADR013 status `superseded`.
 - Kubernetes (sig-node subset): KEP-2400 has approvers `derekwaynecarr`, `dchen1107`; `APPLIES_TO` `component:kubelet`, `component:kube-apiserver`, `feature_gate:NodeSwap`; `Approach` "just set --fail-swap-on=false" `REJECTED_IN` KEP-2400 with a quote.
 - Re-ingest unchanged → 0 writes.
 

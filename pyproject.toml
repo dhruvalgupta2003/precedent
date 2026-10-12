@@ -115,4 +115,4 @@ DEP002 = ["pydantic", "falkordb", "pydantic-ai-slim", "langfuse", "opentelemetry
           "fastembed", "pyyaml", "httpx", "mcp", "fastapi", "uvicorn"]
 
 [tool.codespell]
-skip = "uv.lock,*.lock,.git,.venv,htmlcov"
+skip = "uv.lock,*.lock,.git,.venv,.cache,data"
