@@ -41,7 +41,8 @@
       "Bash(uv add *)",
       "Bash(uv remove *)",
       "Bash(curl *)",
-      "Bash(wget *)"
+      "Bash(wget *)",
+      "Bash(git branch -D *)"
     ],
     "deny": [
       "Read(./.env)",
@@ -62,7 +63,6 @@
       "Bash(git push * main)",
       "Bash(git push * main *)",
       "Bash(git push *:main*)",
-      "Bash(git branch -D *)",
       "Bash(git branch -f *)",
       "Bash(git branch * --force*)",
       "Bash(git reset --hard*)",
