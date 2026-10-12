@@ -1,0 +1,2 @@
+# No blank issues: every issue starts from a form. Security reports never use issues (see SECURITY.md).
+blank_issues_enabled: false

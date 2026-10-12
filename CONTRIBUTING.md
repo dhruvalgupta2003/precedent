@@ -52,7 +52,8 @@ Four layers ([ADR0008](docs/adr/0008-test-strategy-four-layers-and-coverage-gate
 - One logical change per PR; link the issue.
 - Commit messages: `type: description` where type is `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf` or `ci`.
 - CI must be green: lint, types, tests with the coverage gate, evals, security checks.
-- Say in the PR description if you used an AI coding assistant, and check its output as carefully as your own.
+- Tick the AI-assistance box in the PR template if an assistant helped, and check its output as carefully as your own.
+- Never push to `main`: every change goes through a branch and a pull request.
 
 ## Licence
 

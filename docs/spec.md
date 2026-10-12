@@ -239,7 +239,7 @@ precedent check --org backstage [--diff FILE|-] [--plan "text"] [--format text|j
 precedent review [--accept ID | --reject ID]
 precedent context [--paths …] [--budget 1500]    # decisions + recent attempts for this repo/branch/files (hook: SessionStart)
 precedent capture --transcript FILE [--session ID] # candidate decisions from new turns (hook: PreCompact/Stop)
-precedent hooks install      # writes the Claude Code hook config into .claude/settings.json
+precedent hooks install      # writes the Claude Code hook config into .claude/settings.local.json (personal, git-ignored)
 precedent serve              # API + MCP (HTTP) + UI on one port
 ```
 `check` exits 2 on BLOCK, 1 on WARN, 0 on CLEAR (CI-friendly).
@@ -304,7 +304,7 @@ precedent/
   evals/                    # golden JSONL + runners (§11b)
   tests/                    # unit / integration / surface / e2e (§11c)
 ```
-Dependency rule: `surfaces → service → core ← adapters`, enforced by `import-linter`. Module ≤ ~300 lines, function ≤ ~30, complexity ≤ 8 (ADR0009).
+Dependency rule (enforced by `import-linter`, see `pyproject.toml`): `surfaces → service → adapters | connectors → ports → core`. Module ≤ ~300 lines, function ≤ ~30, complexity ≤ 8 (ADR0009).
 
 ---
 

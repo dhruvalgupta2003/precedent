@@ -1,0 +1,45 @@
+name: Propose a decision
+description: A design change worth recording. Accepted proposals become an ADR in docs/adr.
+labels: ["decision"]
+body:
+  - type: markdown
+    attributes:
+      value: Same shape as our ADRs, so an accepted proposal can be copied straight into `docs/adr/NNNN-title.md`.
+  - type: input
+    id: title
+    attributes:
+      label: Decision title
+      placeholder: "Use X for Y"
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: The forces at play. Why does this need a decision now?
+    validations:
+      required: true
+  - type: textarea
+    id: decision
+    attributes:
+      label: Decision
+      description: What we will do, stated as a rule.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Each option and why it was rejected.
+    validations:
+      required: true
+  - type: textarea
+    id: consequences
+    attributes:
+      label: Consequences
+      description: What becomes easier, what becomes harder.
+  - type: input
+    id: supersedes
+    attributes:
+      label: Supersedes (optional)
+      placeholder: "ADR0005"
