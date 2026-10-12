@@ -1,0 +1,18 @@
+# Weekly update PRs. `cooldown` waits 7 days before proposing a new release:
+# most hijacked releases (e.g. LiteLLM 1.82.7/1.82.8, March 2026) are yanked within hours.
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule: { interval: "weekly" }
+    cooldown: { default-days: 7 }
+    groups:
+      python: { patterns: ["*"] }
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: "weekly" }
+    cooldown: { default-days: 7 }
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule: { interval: "weekly" }
+    cooldown: { default-days: 7 }

@@ -1,0 +1,48 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+
+permissions:
+  contents: read          # least privilege: every job can only read the repo
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      falkordb:
+        image: falkordb/falkordb:6.0.2@sha256:107455e862a824e45e8e9f5a7fbfdf5e00a08b14e13eae2577c72fd9e3f59ba6
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with: { persist-credentials: false }
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+      - run: make lint          # ruff, format, codespell, deptry, import-linter contracts
+      - run: make typecheck     # ty
+      - run: make test          # all layers in parallel + coverage gates
+        env: { FALKORDB_URL: "redis://localhost:6379", CI: "true" }   # CI=true: no database is a failure, not a skip
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with: { persist-credentials: false, fetch-depth: 0 }   # full history for secret scanning
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+      - name: Secrets in the whole git history (the pre-commit hook only sees staged files)
+        run: |
+          docker run --rm -v "$PWD:/repo" \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+            zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git /repo --redact --verbose
+      - name: File hygiene (same hooks as local pre-commit; cannot be skipped with --no-verify)
+        run: uvx pre-commit@4.6.2 run --all-files --show-diff-on-failure
+      - name: Vulnerabilities (all deps) and licence gate (shipped deps)
+        run: make audit
+      - name: Workflow security lint
+        run: uvx zizmor@1.30.1 --offline .github/workflows

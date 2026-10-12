@@ -1,0 +1,118 @@
+[project]
+name = "precedent"
+version = "0.1.0"
+description = "A decision graph that coding agents and PRs check before they act. Built on FalkorDB."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+  "falkordb",
+  "pydantic>=2",
+  "pydantic-ai-slim[anthropic,openai,google]",
+  "langfuse",
+  "opentelemetry-sdk",
+  "opentelemetry-exporter-otlp-proto-http",
+  "fastembed",
+  "pyyaml",
+  "httpx",
+  "mcp",
+  "fastapi",
+  "uvicorn",
+]
+
+[project.scripts]
+precedent = "precedent.cli:main"
+
+[dependency-groups]
+dev = [
+    "codespell>=2.4.3",
+    "deptry>=0.25.1",
+    "hypothesis>=6.169.0",
+    "import-linter>=2.15",
+    "pytest",
+    "pytest-cov>=7.1.0",
+    "pytest-randomly>=5.0.0",
+    "pytest-xdist>=3.8.0",
+    "ruff",
+    "ty>=0.0.86",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 120
+cache-dir = ".cache/ruff"
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/W/F pycodestyle+pyflakes · I imports · B bugbear · UP pyupgrade · SIM simplify · C4 comprehensions
+# C90 complexity · PL pylint · S bandit security · N naming · RUF ruff · PT pytest · PTH pathlib
+# RET returns · ERA commented-out code · T20 print
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4", "C90", "PL", "S", "N", "RUF", "PT", "PTH", "RET", "ERA", "T20"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8          # ADR0009
+
+[tool.ruff.lint.pylint]
+max-args = 4                # ADR0009: more than 4 → pass a model
+max-statements = 30         # ADR0009: functions stay small
+max-branches = 8
+max-returns = 4
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "PLR2004", "PLR0913"]   # assert, literal values and many fixtures are normal in tests
+"src/precedent/surfaces/**" = ["T20"]         # the CLI prints by design
+
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+cache_dir = ".cache/pytest"
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+markers = ["integration: needs a running FalkorDB (skipped locally if absent, required in CI)"]
+xfail_strict = true
+
+[tool.coverage.run]
+data_file = ".cache/coverage"
+source = ["precedent"]      # a package name: unimported modules still count (as 0%)
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "@overload"]
+
+[tool.importlinter]
+root_package = "precedent"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers: surfaces -> service -> adapters | connectors -> ports -> core (ADR0009)"
+type = "layers"
+layers = [
+  "precedent.surfaces",
+  "precedent.service",
+  "precedent.adapters | precedent.connectors",
+  "precedent.ports",
+  "precedent.core",
+]
+
+[[tool.importlinter.contracts]]
+name = "The core is pure: no database, LLM, network or web libraries"
+type = "forbidden"
+source_modules = ["precedent.core"]
+forbidden_modules = ["falkordb", "pydantic_ai", "fastembed", "httpx", "fastapi", "mcp", "langfuse", "opentelemetry"]
+
+[tool.deptry.per_rule_ignores]
+# ponytail: runtime deps are declared ahead of the code that imports them (code starts Oct 15).
+# Remove each name from this list as soon as a module imports it.
+DEP002 = ["pydantic", "falkordb", "pydantic-ai-slim", "langfuse", "opentelemetry-sdk", "opentelemetry-exporter-otlp-proto-http",
+          "fastembed", "pyyaml", "httpx", "mcp", "fastapi", "uvicorn"]
+
+[tool.codespell]
+skip = "uv.lock,*.lock,.git,.venv,htmlcov"

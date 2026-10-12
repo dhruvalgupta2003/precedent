@@ -1,0 +1,25 @@
+# Runs on every `git commit` (install once: `uvx pre-commit install`).
+# Revs are pinned to commit SHAs; the comment shows the human version.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e  # frozen: v8.30.1
+    hooks:
+      - id: gitleaks                 # refuse commits that contain secrets
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        exclude: ^uv\.lock$          # the lockfile is large by design (every package pinned with hashes)
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  - repo: local
+    hooks:
+      - id: no-local-paths
+        name: no home-folder paths (personal data guard)
+        language: pygrep
+        entry: '(/Users/[A-Za-z]|/home/[a-z]|[Cc]:\\Users\\)'
+        exclude: ^\.pre-commit-config\.yaml$
