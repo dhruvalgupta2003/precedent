@@ -42,6 +42,7 @@ jobs:
             git /repo --redact --verbose
       - name: File hygiene (same hooks as local pre-commit; cannot be skipped with --no-verify)
         run: uvx pre-commit@4.6.2 run --all-files --show-diff-on-failure
+        env: { SKIP: no-commit-to-branch }   # a local guard; CI legitimately runs on main after merges
       - name: Vulnerabilities (all deps) and licence gate (shipped deps)
         run: make audit
       - name: Workflow security lint
