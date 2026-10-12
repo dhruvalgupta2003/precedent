@@ -13,6 +13,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+      actions: read                   # CodeQL reads workflow-run metadata (required in private repos)
       security-events: write          # only this job may upload findings
     strategy:
       fail-fast: false
