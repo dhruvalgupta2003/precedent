@@ -18,6 +18,7 @@ dependencies = [
   "mcp",
   "fastapi",
   "uvicorn",
+  "opentelemetry-api>=1.45.1",
 ]
 
 [project.scripts]
@@ -68,10 +69,11 @@ max-returns = 4
 
 [tool.ty.environment]
 python-version = "3.12"
+extra-paths = ["tests", "evals"]   # same as pytest's pythonpath
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tests"]
+pythonpath = ["tests", "evals"]
 cache_dir = ".cache/pytest"
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 markers = ["integration: needs a running FalkorDB (skipped locally if absent, required in CI)"]
@@ -111,8 +113,7 @@ forbidden_modules = ["falkordb", "pydantic_ai", "fastembed", "httpx", "fastapi",
 [tool.deptry.per_rule_ignores]
 # ponytail: runtime deps are declared ahead of the code that imports them (code starts Oct 15).
 # Remove each name from this list as soon as a module imports it.
-DEP002 = ["pydantic", "falkordb", "pydantic-ai-slim", "langfuse", "opentelemetry-sdk", "opentelemetry-exporter-otlp-proto-http",
-          "fastembed", "pyyaml", "httpx", "mcp", "fastapi", "uvicorn"]
+DEP002 = ["pydantic", "falkordb", "pydantic-ai-slim", "langfuse", "fastembed", "pyyaml", "httpx", "mcp", "fastapi", "uvicorn"]
 
 [tool.codespell]
 skip = "uv.lock,*.lock,.git,.venv,.cache,data"
