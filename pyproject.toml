@@ -111,7 +111,7 @@ forbidden_modules = ["falkordb", "pydantic_ai", "fastembed", "httpx", "fastapi",
 [tool.deptry.per_rule_ignores]
 # ponytail: runtime deps are declared ahead of the code that imports them (code starts Oct 15).
 # Remove each name from this list as soon as a module imports it.
-DEP002 = ["pydantic", "falkordb", "pydantic-ai-slim", "langfuse", "opentelemetry-sdk", "opentelemetry-exporter-otlp-proto-http",
+DEP002 = ["falkordb", "pydantic-ai-slim", "langfuse", "opentelemetry-sdk", "opentelemetry-exporter-otlp-proto-http",
           "fastembed", "pyyaml", "httpx", "mcp", "fastapi", "uvicorn"]
 
 [tool.codespell]
