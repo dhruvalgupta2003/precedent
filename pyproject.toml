@@ -27,14 +27,14 @@ precedent = "precedent.cli:main"
 dev = [
     "codespell>=2.4.3",
     "deptry>=0.25.1",
-    "hypothesis>=6.169.0",
+    "hypothesis>=6.170.2",
     "import-linter>=2.15",
     "pytest",
     "pytest-cov>=7.1.0",
     "pytest-randomly>=5.0.0",
     "pytest-xdist>=3.8.0",
     "ruff",
-    "ty>=0.0.86",
+    "ty>=0.0.89",
 ]
 
 [build-system]
