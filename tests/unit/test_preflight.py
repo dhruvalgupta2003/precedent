@@ -23,6 +23,9 @@ BACKSTAGE = [
     ),
     rule("backstage/ADR014", "package", "node-fetch", "avoid"),
     rule("backstage/ADR014", "package", "cross-fetch", "require"),
+    rule(
+        "backstage/ADR013", "package", "cross-fetch", "require", status="superseded", superseded_by=["backstage/ADR014"]
+    ),
     rule("backstage/ADR006", "symbol", "React.FC", "avoid"),
     rule("backstage/ADR003", "symbol", "export default", "avoid"),
     rule("backstage/ADR010", "package", "luxon", "prefer"),
@@ -103,9 +106,11 @@ def test_only_live_decisions_can_object(fields, verdict):
     ids=["scope-prefix", "path-glob", "component-in-path", "config-in-text"],
 )
 def test_each_scope_kind_matches_what_it_names(kind, value, change):
-    avoid = rule("org/ADR1", kind, value, "avoid")
+    avoid = rule("org/ADR1", kind, value, "avoid").model_copy(
+        update={"scope": Scope.model_validate({"kind": kind, "value": value, "polarity": "avoid", "quote": "q"})}
+    )
 
-    assert check(facts([change]), [avoid]).verdict == "WARN"
+    assert check(facts([change]), [avoid]).verdict == "BLOCK"  # declared, confirmed, accepted
 
 
 def test_a_conflict_message_quotes_the_decision():
@@ -116,7 +121,25 @@ def test_a_conflict_message_quotes_the_decision():
 
 
 def test_a_folder_scope_covers_the_files_inside_it():
-    avoid = rule("org/ADR1", "path", "packages/catalog-client", "avoid")
+    declared = Scope(kind="path", value="packages/catalog-client", polarity="avoid")
+    avoid = rule("org/ADR1", "path", "packages/catalog-client", "avoid").model_copy(update={"scope": declared})
 
-    assert check(facts([Change("packages/catalog-client/src/index.ts", ("x",))]), [avoid]).verdict == "WARN"
+    assert check(facts([Change("packages/catalog-client/src/index.ts", ("x",))]), [avoid]).verdict == "BLOCK"
     assert check(facts([Change("packages/catalog-clientele/a.ts", ("x",))]), [avoid]).verdict == "CLEAR"
+
+
+def test_old_guidance_is_not_dead_while_a_live_decision_still_backs_it():
+    """N01 on real data: ADR013 (superseded) and ADR014 (live) both require cross-fetch."""
+    report = check(facts([Change("packages/x/package.json", ('"cross-fetch": "^4.0.0",',))]), BACKSTAGE)
+
+    assert report.verdict == "CLEAR"
+
+
+def test_a_folder_stance_read_by_ai_never_objects_to_edits():
+    """N01 on real data: 'packages/catalog-client will be part of a future plugins/catalog-common' is not a ban."""
+    moving = rule("backstage/ADR011", "path", "packages/catalog-client", "avoid")
+
+    assert (
+        check(facts([Change("packages/catalog-client/package.json", ('"cross-fetch": "^4.0.0",',))]), [moving]).verdict
+        == "CLEAR"
+    )

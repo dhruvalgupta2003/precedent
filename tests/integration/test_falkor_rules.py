@@ -63,3 +63,31 @@ def test_adding_node_fetch_against_the_real_graph_warns_with_the_current_decisio
 
 def test_a_graph_without_decisions_has_no_rules(graph):
     assert rules(graph) == []
+
+
+def moment(polarity: str, value: str = "moment") -> dict:
+    return {
+        "kind": "package",
+        "value": value,
+        "polarity": polarity,
+        "quote": "momentjs is being sunset",
+        "extracted": True,
+    }
+
+
+def test_a_scope_that_disappears_on_re_save_is_invalidated_not_deleted(graph):
+    """I7: the graph keeps history, but only facts the source still states are live."""
+    save_decision(graph, adr("010", scopes=[moment("avoid"), moment("avoid", value="momentjs")]))
+    save_decision(graph, adr("010", title="ADR010 v2", scopes=[moment("avoid")]))
+
+    assert [r.scope.value for r in rules(graph)] == ["moment"]
+    assert graph.query(
+        "MATCH ()-[a:APPLIES_TO]->(:Scope {value: 'momentjs'}) RETURN a.invalid_at IS NOT NULL"
+    ).result_set == [[True]]
+
+
+def test_a_changed_polarity_replaces_the_live_stance(graph):
+    save_decision(graph, adr("010", scopes=[moment("avoid")]))
+    save_decision(graph, adr("010", title="ADR010 v2", scopes=[moment("prefer")]))
+
+    assert [(r.scope.value, r.scope.polarity) for r in rules(graph)] == [("moment", "prefer")]
