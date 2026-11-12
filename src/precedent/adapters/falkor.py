@@ -21,19 +21,30 @@ def ensure_schema(graph: Graph) -> None:
             graph.query(create)
 
 
-# MERGE finds or creates by the key alone; SET updates the rest. MERGE on the title too, and a
-# fixed typo would create a second decision. Scopes MERGE by kind+value, so decisions share them.
+# MERGE finds or creates by the key alone; SET updates the rest (MERGE on the title too, and a fixed
+# typo would create a second decision). FOREACH, not UNWIND: an empty list must skip only its own part.
+# The older decision is MERGEd, not MATCHed, so the link survives whichever file is saved first.
+# A citation's section and quote sit on the CITES edge: one document, different sentences per decision.
 SAVE_DECISION = """
 MERGE (d:Decision {id: $id}) SET d += $props
-WITH d UNWIND $scopes AS s
-MERGE (sc:Scope {kind: s.kind, value: s.value})
-MERGE (d)-[a:APPLIES_TO]->(sc) SET a.polarity = s.polarity
+FOREACH (s IN $scopes |
+  MERGE (sc:Scope {kind: s.kind, value: s.value})
+  MERGE (d)-[a:APPLIES_TO]->(sc) SET a.polarity = s.polarity)
+FOREACH (old IN $supersedes |
+  MERGE (o:Decision {id: old})
+  MERGE (d)-[:SUPERSEDES]->(o))
+FOREACH (src IN $sources |
+  MERGE (doc:Source {url: src.url}) SET doc.kind = src.kind
+  MERGE (d)-[:CITES {section: src.section, quote: src.quote}]->(doc))
 """
 DECISION_PROPS = {"title", "statement", "status", "tier", "confirmed", "confidence", "decided_at", "rationale"}
 
 
 def save_decision(graph: Graph, record: DecisionRecord) -> None:
-    """Write a decision and its scopes. Saving the same record again changes nothing."""
+    """Write a decision with its scopes, the decisions it replaces and its sources. Re-saving changes nothing."""
     props = record.model_dump(mode="json", include=DECISION_PROPS)
     scopes = [s.model_dump() for s in record.scopes]
-    graph.query(SAVE_DECISION, {"id": record.id, "props": props, "scopes": scopes})
+    # MERGE keys can't be null, so a missing section or quote is stored as "".
+    sources = [s.model_dump() | {"section": s.section or "", "quote": s.quote or ""} for s in record.sources]
+    params = {"id": record.id, "props": props, "scopes": scopes, "supersedes": list(record.supersedes)}
+    graph.query(SAVE_DECISION, {**params, "sources": sources})
