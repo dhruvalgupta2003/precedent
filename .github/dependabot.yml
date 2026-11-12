@@ -12,6 +12,10 @@ updates:
     directory: "/"
     schedule: { interval: "weekly" }
     cooldown: { default-days: 7 }
+    groups:
+      # One PR for all actions: codeql-action's init and analyze must move together,
+      # and with strict required checks every extra PR costs another update-and-CI round.
+      actions: { patterns: ["*"] }
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule: { interval: "weekly" }
