@@ -241,7 +241,7 @@ Answer contract: text + `decisions[]` + `path` (node/edge list for the UI) + `so
 
 ### CLI (`precedent`, argparse)
 ```
-precedent ingest adr <dir|url> --org backstage
+precedent ingest <dir> --org backstage [--source NAME] [--no-ai]     # ids: org/[source/]ADRnnn (ADR0012)
 precedent ingest kep <keps-dir> --org kubernetes [--sigs sig-node,sig-apps]
 precedent why "<question>" --org backstage
 precedent check --org backstage [--diff FILE|-] [--plan "text"] [--format text|json|md]
