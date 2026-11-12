@@ -5,10 +5,13 @@ def diff(path: str, *lines: str) -> str:
     return f"--- a/{path}\n+++ b/{path}\n@@ -1,1 +1,2 @@\n" + "\n".join(lines) + "\n"
 
 
-def test_a_unified_diff_gives_each_file_and_only_its_added_lines():
+def test_a_unified_diff_gives_each_file_with_its_added_and_removed_lines():
     text = diff("src/a.ts", "+import x from 'x';", " unchanged", "-import y from 'y';") + diff("b.md", "+hi")
 
-    assert changes(text) == [Change("src/a.ts", ("import x from 'x';",)), Change("b.md", ("hi",))]
+    assert changes(text) == [
+        Change("src/a.ts", ("import x from 'x';",), ("import y from 'y';",)),
+        Change("b.md", ("hi",)),
+    ]
 
 
 def test_js_and_python_imports_become_package_names():
@@ -68,3 +71,38 @@ def test_documentation_is_not_code_but_manifests_still_count():
 
     assert f.packages == {"requests"}
     assert "export default" not in f.text
+
+
+def test_a_re_export_counts_as_using_the_package():
+    f = facts(
+        [Change("http.ts", ("export { default as fetch } from 'node-fetch';", "export * from '@scope/pkg/sub';"))]
+    )
+
+    assert f.packages == {"node-fetch", "@scope/pkg"}
+
+
+def test_a_namespace_or_default_import_records_its_alias():
+    f = facts([Change("Badge.tsx", ("import * as R from 'react';", "import Lodash from 'lodash';"))])
+
+    assert f.aliases == {"R": "react", "Lodash": "lodash"}
+
+
+def test_export_as_default_reads_as_export_default():
+    f = facts([Change("Badge.tsx", ("export { Badge as default };",))])
+
+    assert "export default Badge" in f.code
+
+
+def test_strings_and_comments_are_not_code():
+    f = facts([Change("a.ts", ("const label = 'export default'; // export default here", "export default x;"))])
+
+    assert f.code.count("export default") == 1
+
+
+def test_a_line_moved_within_the_change_is_not_new():
+    moved = changes(
+        "--- a/a.ts\n+++ b/a.ts\n@@ -1 +0,0 @@\n-import fetch from 'node-fetch';\n"
+        "--- a/b.ts\n+++ b/b.ts\n@@ -0,0 +1 @@\n+import fetch from 'node-fetch';\n"
+    )
+
+    assert facts(moved).packages == set()

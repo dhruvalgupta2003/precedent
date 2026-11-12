@@ -62,10 +62,12 @@ SCORERS: dict[str, Scorer] = {
     "extraction": score_extraction,
     "safety": score_safety,
     "session_capture": _not_built,
+    "hard": score_preflight,  # adversarial, prod-like pre-flight cases: maps limits, never gates
 }
 
 # Minimum pass rate per suite over the cases that ran (spec §11b; finer metrics join their scorers).
 MIN_PASS = {"preflight": 0.9, "why": 0.95, "extraction": 0.85, "safety": 1.0, "session_capture": 0.8}
+REPORT_ONLY = {"hard"}  # suites that show where Precedent stands; a miss there is information, not a regression
 
 
 def false_blocks(results: list[CaseResult]) -> int:
@@ -78,6 +80,11 @@ def gate(suite: str, results: list[CaseResult]) -> tuple[str, str]:
     if not ran:
         return "PENDING", f"0/{len(results)} implemented"
     rate = sum(r.status == "pass" for r in ran) / len(ran)
+    if suite in REPORT_ONLY:
+        missed = [r.case_id.split("-")[0] for r in ran if r.status == "fail"]
+        return "REPORT", f"{len(ran)}/{len(results)} ran, pass {rate:.0%}" + (
+            f" · missed {', '.join(missed)}" if missed else ""
+        )
     problems = [f"pass rate {rate:.0%} < {MIN_PASS[suite]:.0%}"] if rate < MIN_PASS[suite] else []
     if suite == "preflight" and (fb := false_blocks(ran)):
         problems.append(f"{fb} false BLOCK")

@@ -74,10 +74,19 @@ def matches(scope: Scope, facts: Facts) -> bool:
         folder = value.rstrip("/") + "/"
         return any(fnmatch(path, value) or path.startswith(folder) for path in facts.paths)
     module, _, name = value.rpartition(".")
-    if scope.kind == "symbol" and module and (module.lower(), name) in facts.imported:
+    if scope.kind == "symbol" and module and _imported_as(module.lower(), name, facts):
         return True
     in_paths = scope.kind != "symbol" and any(value in path.split("/") for path in facts.paths)
-    return in_paths or bool(re.search(rf"(?<![\w.]){re.escape(value)}(?![\w])", facts.text))
+    haystack = facts.code if scope.kind == "symbol" else facts.text  # strings and comments aren't code
+    return in_paths or bool(re.search(rf"(?<![\w.]){re.escape(value)}(?![\w])", haystack))
+
+
+def _imported_as(module: str, name: str, facts: Facts) -> bool:
+    """`React.FC` written as `FC` from 'react', or as `R.FC` after `import * as R from 'react'`."""
+    if (module, name) in facts.imported:
+        return True
+    aliases = [alias for alias, source in facts.aliases.items() if source == module]
+    return any(re.search(rf"(?<![\w.]){re.escape(a)}\.{re.escape(name)}(?!\w)", facts.code) for a in aliases)
 
 
 def _applies(scope: Scope, facts: Facts) -> bool:

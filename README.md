@@ -95,7 +95,7 @@ Across three repos and three decisions held only in a central decision graph ([E
 
 If your newer decision sits next to the code, a one-line note in `CLAUDE.md` already helps. Precedent matters when it doesn't: decisions kept in a central repo, a PR thread or another team's ADRs. Small study (5 runs each, one task, one model); the harness is in the repo so you can rerun it.
 
-On real Backstage history, the check flagged 9 of 9 PRs that added a package their ADRs advise against, and none of the 79 PRs merged in an ordinary week.
+On real Backstage history, the check flagged 9 of 9 PRs that added a package their ADRs advise against, and none of the 79 PRs merged in an ordinary week. What it catches and what it can't yet, measured on adversarial cases: [docs/limits.md](docs/limits.md).
 
 ## Use it from
 
