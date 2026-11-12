@@ -104,7 +104,7 @@ class DecisionRecord(BaseModel):
 | `Approach` | `id` (hash of normalised summary) | summary, embedding |
 | `Person` | `handle` | name |
 | `Team` | `name` | |
-| `Source` | `url`+`section` | kind, quote, fetched_at |
+| `Source` | `url` | kind, fetched_at |
 | `Run` | `id` | agent, task, started_at |
 
 ### Edges — every edge has `valid_from`, `invalid_at` (null = valid), `source_url`
@@ -116,7 +116,7 @@ class DecisionRecord(BaseModel):
 (Person)-[:AUTHORED|REVIEWED|APPROVED]->(Decision)
 (Team)-[:OWNS]->(Decision)
 (Person)-[:OWNS_PATH {role}]->(Scope {kind:"path"})
-(Decision|Approach)-[:CITES]->(Source)
+(Decision|Approach)-[:CITES {section, quote}]->(Source)
 (Run)-[:CONSULTED|PROPOSED|ATTEMPTED]->(Decision|Approach)
 ```
 
@@ -126,6 +126,7 @@ class DecisionRecord(BaseModel):
 - A decision is **current** iff `status = "accepted"` and no incoming valid `SUPERSEDES`.
 - A decision can **BLOCK** iff current **and** `confirmed` **and** `tier in {"structured","capture"}`.
 - Every `Decision` and every LLM-derived edge has ≥ 1 `CITES` with a `quote`.
+- A citation's `section` and `quote` live on the `CITES` edge, not the `Source` node: decisions share one document but quote different sentences, and a node property holds one value (decided 2026-11-12). MERGE keys can't be null, so a missing section or quote is stored as `""`.
 
 ### Indexes (verify syntax)
 ```cypher
@@ -227,10 +228,10 @@ A Pydantic AI agent (model from `PRECEDENT_MODEL_AGENT`, any provider) with tool
 | `current_of(id)` | `MATCH (d:Decision {id:$id})<-[:SUPERSEDES*0..]-(h) WHERE NOT ()-[:SUPERSEDES]->(h) RETURN h` |
 | `people_of(id)` | `MATCH (p:Person)-[r:AUTHORED|REVIEWED|APPROVED]->(:Decision {id:$id}) RETURN p.handle, type(r)` |
 | `rejected_for(id)` | `MATCH (a:Approach)-[r:REJECTED_IN]->(:Decision {id:$id}) RETURN a.summary, r.reason` |
-| `sources_of(id)` | `MATCH (:Decision {id:$id})-[:CITES]->(s:Source) RETURN s.url, s.section, s.quote` |
+| `sources_of(id)` | `MATCH (:Decision {id:$id})-[c:CITES]->(s:Source) RETURN s.url, c.section, c.quote` |
 | `path(from_id, to_id)` | `MATCH p = shortestPath((a {id:$a})-[*..6]-(b {id:$b})) RETURN p` |
 
-Answer contract: text + `decisions[]` + `path` (node/edge list for the UI) + `sources[]`. Must cite at least one `Source.quote`; if none found, say "no recorded decision".
+Answer contract: text + `decisions[]` + `path` (node/edge list for the UI) + `sources[]`. Must cite at least one `CITES.quote`; if none found, say "no recorded decision".
 
 ---
 
