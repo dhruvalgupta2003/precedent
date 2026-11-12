@@ -29,11 +29,11 @@ def graph() -> Iterator[Graph]:
     url = os.environ.get("FALKORDB_URL", "redis://localhost:6380")
     try:
         db = FalkorDB.from_url(url)
-        db.connection.ping()
+        db.list_graphs()  # not PING: a plain Redis answers PING too, but only FalkorDB knows GRAPH.LIST
     except Exception as exc:
         if os.environ.get("CI"):
             raise
-        pytest.skip(f"FalkorDB not reachable at {url}: {exc}")
+        pytest.skip(f"No FalkorDB at {url}: {exc}")
     # pid + random suffix: parallel workers and concurrent runs never share a graph
     test_graph = db.select_graph(safe_graph_name(f"test_{os.getpid()}_{uuid.uuid4().hex[:8]}"))
     yield test_graph
