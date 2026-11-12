@@ -55,3 +55,16 @@ def test_removed_lines_are_not_facts():
 
     assert f.packages == set()
     assert f.paths == {"client.ts"}
+
+
+def test_documentation_is_not_code_but_manifests_still_count():
+    f = facts(
+        [
+            Change("docs/migrating.md", ("import fetch from 'node-fetch';", "export default app.createRoot();")),
+            Change("README.mdx", ("import moment from 'moment';",)),
+            Change("requirements.txt", ("requests>=2",)),
+        ]
+    )
+
+    assert f.packages == {"requests"}
+    assert "export default" not in f.text

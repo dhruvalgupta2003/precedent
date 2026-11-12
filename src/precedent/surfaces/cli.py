@@ -45,7 +45,8 @@ def run_ingest(args: argparse.Namespace) -> int:
     report = service.ingest(_graph(args.org), args.folder, args.org, reader)
     print(f"{args.org}: {report.written} written, {report.unchanged} unchanged")
     if reader:
-        print(f"AI read {report.scopes} scopes; dropped {report.dropped} without a real quote; {report.failed} failed")
+        dropped = f"dropped {report.dropped} (quote not in the source, or not code)"
+        print(f"AI read {report.scopes} scopes; {dropped}; {report.failed} failed")
     return 0
 
 

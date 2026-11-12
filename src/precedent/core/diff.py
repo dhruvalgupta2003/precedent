@@ -15,6 +15,7 @@ PY_FROM = re.compile(r"^\s*from\s+([\w.]+)\s+import\s+(.+)")
 PACKAGE_JSON_DEP = re.compile(r'^\s*"(@?[\w.-]+(?:/[\w.-]+)?)"\s*:\s*"(?:[\^~<>=*\d]|workspace:|npm:|latest)')
 REQUIREMENT = re.compile(r"^\s*([A-Za-z0-9][\w.-]*)\s*(?:[<>=~!;\[]|$)")
 NOT_PACKAGES = {"name", "version", "node", "npm", "yarn", "pnpm"}
+DOCS = (".md", ".mdx", ".rst", ".adoc", ".txt")  # code examples in docs are not code
 
 
 class Change(NamedTuple):
@@ -45,13 +46,14 @@ def changes(diff: str) -> list[Change]:
 def facts(change_list: list[Change]) -> Facts:
     packages: set[str] = set()
     imported: set[tuple[str, str]] = set()
-    for change in change_list:
+    code = [c for c in change_list if _manifest_pattern(c.path) or not c.path.lower().endswith(DOCS)]
+    for change in code:
         manifest = _manifest_pattern(change.path)
         for line in change.added:
             packages |= _imports(line, imported)
             if manifest and (m := manifest.match(line)) and m[1] not in NOT_PACKAGES:
                 packages.add(m[1].lower() if manifest is REQUIREMENT else m[1])
-    text = "\n".join(line for change in change_list for line in change.added)
+    text = "\n".join(line for change in code for line in change.added)
     return Facts(frozenset(c.path for c in change_list), frozenset(packages), frozenset(imported), text)
 
 

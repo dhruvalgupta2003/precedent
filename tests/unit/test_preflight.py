@@ -10,8 +10,9 @@ from precedent.core.preflight import Rule, check
 GOLDEN = Path(__file__).parents[2] / "evals" / "preflight.jsonl"
 
 
-def rule(decision: str, kind: str, value: str, polarity: str, **fields) -> Rule:
-    scope = {"kind": kind, "value": value, "polarity": polarity, "quote": f"{decision} on {value}", "extracted": True}
+def rule(decision: str, kind: str, value: str, polarity: str, *, unless: tuple[str, ...] = (), **fields) -> Rule:
+    quote = f"{decision} on {value}"
+    scope = {"kind": kind, "value": value, "polarity": polarity, "quote": quote, "extracted": True, "unless": unless}
     defaults = {"title": decision, "status": "accepted", "tier": "structured", "confirmed": True}
     return Rule.model_validate({"decision": decision, "scope": scope, **defaults, **fields})
 
@@ -27,28 +28,16 @@ BACKSTAGE = [
         "backstage/ADR013", "package", "cross-fetch", "require", status="superseded", superseded_by=["backstage/ADR014"]
     ),
     rule("backstage/ADR006", "symbol", "React.FC", "avoid"),
-    rule("backstage/ADR003", "symbol", "export default", "avoid"),
+    rule("backstage/ADR003", "symbol", "export default", "avoid", unless=("React.lazy",)),
     rule("backstage/ADR010", "package", "luxon", "prefer"),
     rule("backstage/ADR010", "package", "moment", "avoid"),
     rule("backstage/ADR007", "package", "msw", "prefer"),
 ]
+# Every Backstage diff case, golden and real (R*), except P06: pattern detection the MVP may miss (spec §11).
 DIFF_CASES = [
     c
     for line in GOLDEN.read_text().splitlines()
-    if (c := json.loads(line))["id"][:3]
-    in {
-        "P01",
-        "P02",
-        "P03",
-        "P04",
-        "P05",
-        "N01",
-        "N02",
-        "N03",
-        "N04",
-        "N05",
-        "N06",
-    }
+    if (c := json.loads(line))["org"] == "backstage" and "diff" in c["input"] and not c["id"].startswith("P06")
 ]
 
 
@@ -143,3 +132,11 @@ def test_a_folder_stance_read_by_ai_never_objects_to_edits():
         check(facts([Change("packages/catalog-client/package.json", ('"cross-fetch": "^4.0.0",',))]), [moving]).verdict
         == "CLEAR"
     )
+
+
+def test_a_stated_exception_in_the_same_change_silences_the_stance():
+    default_export = Change("Renderer.tsx", ("export default function Renderer() {}",))
+    lazy_import = Change("Content.tsx", ("import { lazy } from 'react';",))
+
+    assert check(facts([default_export]), BACKSTAGE).verdict == "WARN"
+    assert check(facts([default_export, lazy_import]), BACKSTAGE).verdict == "CLEAR"

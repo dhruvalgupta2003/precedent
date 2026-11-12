@@ -91,3 +91,10 @@ def test_a_changed_polarity_replaces_the_live_stance(graph):
     save_decision(graph, adr("010", title="ADR010 v2", scopes=[moment("prefer")]))
 
     assert [(r.scope.value, r.scope.polarity) for r in rules(graph)] == [("moment", "prefer")]
+
+
+def test_a_stated_exception_round_trips_through_the_graph(graph):
+    lazy = {"kind": "symbol", "value": "export default", "polarity": "avoid", "quote": "q", "extracted": True}
+    save_decision(graph, adr("003", scopes=[lazy | {"unless": ["React.lazy"]}]))
+
+    assert rules(graph)[0].scope.unless == ("React.lazy",)
