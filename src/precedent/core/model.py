@@ -50,7 +50,8 @@ class SourceRef(Frozen):
 
 
 class DecisionRecord(Frozen):
-    id: str = Field(pattern=r"^[a-z0-9-]+/[A-Za-z0-9-]+$")  # "<org>/<source id>", e.g. backstage/ADR014
+    # The org, an optional source name and the ADR number, joined by slashes (ADR0012).
+    id: str = Field(pattern=r"^[a-z0-9-]+/(?:[a-z0-9-]+/)?[A-Za-z0-9-]+$")
     org: str = Field(min_length=1)
     title: str = Field(min_length=1)
     statement: str = ""

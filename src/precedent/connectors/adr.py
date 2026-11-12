@@ -35,11 +35,15 @@ class Parsed(NamedTuple):
     successors: list[str]  # ids this ADR says replace it
 
 
-def records(source: str, org: str) -> Iterator[DecisionRecord]:
-    """One record per real ADR in the folder; templates and other files are skipped."""
+def records(folder: str, org: str, source: str | None = None) -> Iterator[DecisionRecord]:
+    """One record per real ADR in the folder; templates and other files are skipped.
+
+    `source` names the folder (e.g. "platform") so two folders that both start at ADR001 don't collide.
+    """
+    prefix = f"{org}/{source}" if source else org
     adrs = [
         _parse(path, f"ADR{match[1]}")
-        for path in sorted(Path(source).glob("*.md"))
+        for path in sorted(Path(folder).glob("*.md"))
         if (match := ADR_FILE.fullmatch(path.name)) and "template" not in path.name
     ]
     known = {a.id for a in adrs}
@@ -50,7 +54,7 @@ def records(source: str, org: str) -> Iterator[DecisionRecord]:
             replaces.setdefault(successor, []).append(a.id)
     for a in adrs:
         yield DecisionRecord(
-            id=f"{org}/{a.id}",
+            id=f"{prefix}/{a.id}",
             org=org,
             title=a.title,
             statement=a.statement,
@@ -58,7 +62,7 @@ def records(source: str, org: str) -> Iterator[DecisionRecord]:
             needs_review=a.needs_review,
             tier="structured",
             confirmed=True,
-            supersedes=tuple(f"{org}/{i}" for i in dict.fromkeys(replaces[a.id]) if i in known),
+            supersedes=tuple(f"{prefix}/{i}" for i in dict.fromkeys(replaces[a.id]) if i in known),
             unresolved=tuple(i for i in dict.fromkeys(a.supersedes + a.successors) if i not in known),
             sources=(SourceRef(url=str(a.path), kind="adr"),),
         )

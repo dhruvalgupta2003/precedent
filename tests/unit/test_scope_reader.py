@@ -6,6 +6,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from precedent.adapters.llm import scope_reader
 from precedent.core.errors import ExtractionError
+from precedent.service import extract_cache_dir
 
 SCOPE = {"kind": "package", "value": "node-fetch", "polarity": "avoid", "quote": "use the native `fetch`"}
 
@@ -72,3 +73,8 @@ def test_offline_replays_recorded_answers_and_never_calls_a_model(tmp_path):
     assert len(calls) == 1
     with pytest.raises(ExtractionError, match="not recorded"):
         replay("An ADR nobody recorded.")
+
+
+def test_the_answer_cache_lives_in_the_users_cache_folder_not_their_repo(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    assert extract_cache_dir() == tmp_path / "precedent" / "extract"

@@ -30,10 +30,14 @@ class IngestReport(NamedTuple):
 
 
 def ingest(graph: Graph, folder: str, org: str, read_scopes: ScopeReader | None = None) -> IngestReport:
-    """Save every ADR in the folder into the org's graph, with AI-read scopes when a reader is given."""
+    """Save every ADR in the folder into the org's graph, with AI-read scopes when a reader is given.
+
+    `org` may be "org/source" to keep this folder's decision ids apart from another's (ADR0012).
+    """
     ensure_schema(graph)
     counts: Counter[str] = Counter()
-    for parsed in adr.records(folder, org):
+    org, _, source = org.partition("/")
+    for parsed in adr.records(folder, org, source or None):
         record = _with_scopes(parsed, read_scopes, counts) if read_scopes else parsed
         counts["written" if save_decision(graph, record) else "unchanged"] += 1
     return IngestReport(**counts)
@@ -47,7 +51,12 @@ def preflight(graph: Graph, changes: list[Change]) -> Report:
 def default_scope_reader(kind: Literal["adr", "instructions"] = "adr") -> ScopeReader | None:
     """The configured extraction model (PRECEDENT_MODEL_EXTRACT), or None to work without AI."""
     model = os.environ.get("PRECEDENT_MODEL_EXTRACT")
-    return scope_reader(model, cache_dir=Path(".cache/precedent/extract"), kind=kind) if model else None
+    return scope_reader(model, cache_dir=extract_cache_dir(), kind=kind) if model else None
+
+
+def extract_cache_dir() -> Path:
+    """The user's cache folder, never the repo being checked."""
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "precedent" / "extract"
 
 
 # Where coding agents read their instructions; nested CLAUDE.md/AGENTS.md count too.

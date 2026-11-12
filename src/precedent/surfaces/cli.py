@@ -42,7 +42,8 @@ def main(argv: list[str] | None = None) -> int:
 
 def run_ingest(args: argparse.Namespace) -> int:
     reader = None if args.no_ai else service.default_scope_reader()
-    report = service.ingest(_graph(args.org), args.folder, args.org, reader)
+    prefix = f"{args.org}/{args.source}" if args.source else args.org
+    report = service.ingest(_graph(args.org), args.folder, prefix, reader)
     print(f"{args.org}: {report.written} written, {report.unchanged} unchanged")
     if reader:
         dropped = f"dropped {report.dropped} (quote not in the source, or not code)"
@@ -111,6 +112,7 @@ def _parser() -> argparse.ArgumentParser:
     ingest.add_argument("folder", type=folder)
     ingest.add_argument("--org", type=org_name, required=True)
     ingest.add_argument("--no-ai", action="store_true", help="skip AI-read scopes (status and links only)")
+    ingest.add_argument("--source", type=org_name, help="name this folder (e.g. platform) so ids don't collide")
     ingest.set_defaults(run=run_ingest)
     check = commands.add_parser("check", help="check a diff, or with --hook a Claude Code edit, against decisions")
     check.add_argument("--org", type=org_name, required=True)

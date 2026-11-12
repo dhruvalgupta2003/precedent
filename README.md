@@ -46,26 +46,38 @@ WARN  node-fetch: ADR013 was superseded by ADR014 — Node.js code uses native f
 3. **Check** — pre-flight matches a diff or an agent's plan against current decisions and returns BLOCK, WARN or CLEAR with the source path. Only confirmed decisions from structured sources can block.
 4. **Remember** — agents record attempts and propose decisions over MCP; a human confirms them.
 
+## Install
+
+**Status: v0.1, early.** It works on real decisions and real PRs (see "Does it work?"), and it has known limits ([docs/limits.md](docs/limits.md)). Feedback and issues are welcome.
+
+Needs Python 3.12+ and Docker. An LLM key is optional: with one, Precedent reads *which code* each ADR covers (every answer is checked against the ADR's own words); without one, it still reads status and "replaced by" links.
+
+```sh
+uv tool install git+https://github.com/dhruvalgupta2003/precedent        # the `precedent` command
+docker run -d --name precedent-db -p 6380:6379 falkordb/falkordb:6.0.4    # the decision graph, on localhost:6380
+export PRECEDENT_MODEL_EXTRACT=anthropic:claude-haiku-5-5 ANTHROPIC_API_KEY=...   # optional; any Pydantic AI model works
+```
+
 ## Quick start
 
 ```sh
-docker compose up -d                       # FalkorDB on localhost:6380
-cp .env.example .env                       # optional: an LLM key, so it can read which code each ADR covers
-uv sync
-
-# 1. Load your decisions: ADR folders in Backstage, MADR, adr-tools/Nygard or front-matter style
-uv run --env-file .env precedent ingest docs/adr --org myteam
+# 1. Load your decisions: ADR folders in Backstage, MADR, adr-tools/Nygard or front-matter style.
+#    One graph per org guards every repo; --source keeps folders that both start at ADR001 apart.
+precedent ingest docs/adr --org myteam
+precedent ingest ../platform-decisions/adr --org myteam --source platform
 
 # 2. Check a change against the decisions that are still valid
-git diff main | uv run precedent check --org myteam          # exit 0 CLEAR, 1 WARN, 2 BLOCK
+git diff main | precedent check --org myteam              # exit 0 CLEAR, 1 WARN, 2 BLOCK
 
 # 3. Guard Claude Code: before an edit, the agent gets the current decision and its quote
-uv run precedent hooks install --org myteam                  # writes .claude/settings.local.json
-uv run precedent hooks install --org myteam --user           # or: guard every repo you open
+precedent hooks install --org myteam                      # this repo (.claude/settings.local.json)
+precedent hooks install --org myteam --user               # or every repo you open (~/.claude/settings.json)
 
 # 4. Find lines in CLAUDE.md / AGENTS.md / Cursor / Copilot rules that contradict a current decision
-uv run --env-file .env precedent doctor --org myteam          # exit 1 if any (CI)
+precedent doctor --org myteam                             # exit 1 if any (CI)
 ```
+
+Working on Precedent itself? Clone it, `docker compose up -d`, `make install`, and see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 What the agent sees when it is about to add `node-fetch` to a Backstage backend:
 

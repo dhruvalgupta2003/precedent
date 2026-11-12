@@ -169,3 +169,17 @@ def test_the_decision_statement_is_the_first_paragraph_of_the_decision_section(t
         == "All code that is executed in Node.js should use the native `fetch`. Example:"
     )
     assert records["backstage/ADR015"].statement == ""
+
+
+def test_a_source_name_keeps_two_adr_folders_from_colliding(tmp_path):
+    central, local = tmp_path / "central", tmp_path / "local"
+    for folder in (central, local):
+        folder.mkdir()
+        (folder / "adr013-use-node-fetch.md").write_text(ADR013)
+        (folder / "adr014-use-fetch.md").write_text(ADR014)
+
+    ids = [r.id for f, s in ((central, "platform"), (local, "web")) for r in adr.records(str(f), "acme", source=s)]
+    platform14 = next(r for r in adr.records(str(central), "acme", source="platform") if r.id.endswith("ADR014"))
+
+    assert ids == ["acme/platform/ADR013", "acme/platform/ADR014", "acme/web/ADR013", "acme/web/ADR014"]
+    assert platform14.supersedes == ("acme/platform/ADR013",)  # links stay inside their source
