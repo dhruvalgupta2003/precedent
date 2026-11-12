@@ -1,6 +1,6 @@
 services:
   falkordb:
-    image: falkordb/falkordb:6.0.2@sha256:107455e862a824e45e8e9f5a7fbfdf5e00a08b14e13eae2577c72fd9e3f59ba6
+    image: falkordb/falkordb:6.0.4@sha256:bef8acb1d8ed9ff8d2ea251767e75c6c05cfa759f7c6bc7e1c122f27d0ea4d7f
     ports:
       - "6380:6379"   # graph (RESP) on host port 6380: 6379 is often taken by a local Redis
       - "3000:3000"   # FalkorDB Browser
