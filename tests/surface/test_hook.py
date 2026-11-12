@@ -67,7 +67,7 @@ def test_warn_gives_the_agent_the_decision_and_its_quote_as_context():
 
     assert out["hookEventName"] == "PreToolUse"
     assert "permissionDecision" not in out  # a warning never stops the edit (ADR0004)
-    assert "backstage/ADR014 says avoid node-fetch" in out["additionalContext"]
+    assert "The current decision is backstage/ADR014: avoid node-fetch" in out["additionalContext"]
     assert '"move away from node-fetch"' in out["additionalContext"]
 
 
@@ -87,3 +87,22 @@ def test_each_finding_is_one_line_even_when_the_quote_wraps():
 
     text = describe(Report(verdict="WARN", findings=(wrapped,)))
     assert text.splitlines()[1].endswith('"move away from node-fetch" (docs/adr014.md)')
+
+
+def test_a_warning_tells_the_agent_which_source_wins_and_what_to_do():
+    """E1: an informational warning lost to CLAUDE.md 4 times in 5. Agents weigh authority, so say it plainly."""
+    replaced = Finding(
+        kind="superseded",
+        decision="backstage/ADR013",
+        scope=AVOID,
+        successor="backstage/ADR014",
+        message="backstage/ADR013 (require node-fetch) was replaced by backstage/ADR014",
+    )
+    result = response(Report(verdict="WARN", findings=(FINDING, replaced)))
+    assert result is not None
+    context = result["hookSpecificOutput"]["additionalContext"]
+
+    assert "current decision" in context
+    assert "out of date" in context  # an instruction that says otherwise (CLAUDE.md, AGENTS.md) is stale
+    assert "revise this change" in context
+    assert "unless the user explicitly asked" in context.lower()
