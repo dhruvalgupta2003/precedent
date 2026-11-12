@@ -140,3 +140,9 @@ def test_a_stated_exception_in_the_same_change_silences_the_stance():
 
     assert check(facts([default_export]), BACKSTAGE).verdict == "WARN"
     assert check(facts([default_export, lazy_import]), BACKSTAGE).verdict == "CLEAR"
+
+
+def test_a_symbol_used_through_an_alias_of_its_module_matches():
+    namespace = Change("Badge.tsx", ("import * as R from 'react';", "export const Badge: R.FC<Props> = () => null;"))
+
+    assert check(facts([namespace]), BACKSTAGE).verdict == "WARN"
