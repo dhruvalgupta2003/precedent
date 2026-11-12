@@ -1,6 +1,6 @@
 ---
 title: "ADR0011: Guard agents against dead and contradicted decisions, at the moment they act"
-status: proposed
+status: accepted
 date: 2026-11-12
 ---
 
