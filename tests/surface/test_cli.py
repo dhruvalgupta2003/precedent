@@ -105,3 +105,24 @@ def test_doctor_says_so_when_every_instruction_file_is_current(tmp_path, monkeyp
 
     assert main(["doctor", "--org", "backstage", "--project", str(tmp_path), "--no-ai"]) == 0
     assert "No stale lines in 1 instruction file" in capsys.readouterr().out
+
+
+def test_hooks_install_user_guards_every_repo_without_touching_existing_hooks(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir()
+    mine = {"matcher": "Bash", "hooks": [{"type": "command", "command": "my-own-hook"}]}
+    settings.write_text(json.dumps({"hooks": {"PreToolUse": [mine]}, "theme": "dark"}))
+
+    assert main(["hooks", "install", "--org", "acme", "--user"]) == 0
+
+    saved = json.loads(settings.read_text())
+    assert saved["theme"] == "dark"
+    assert saved["hooks"]["PreToolUse"][0] == mine
+    assert "check --hook --org acme" in saved["hooks"]["PreToolUse"][1]["hooks"][0]["command"]
+
+
+def test_hooks_install_takes_either_a_project_or_the_user(tmp_path):
+    with pytest.raises(SystemExit) as exited:
+        main(["hooks", "install", "--org", "acme", "--user", "--project", str(tmp_path)])
+    assert exited.value.code == 2

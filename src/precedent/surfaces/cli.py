@@ -60,8 +60,9 @@ def run_check(args: argparse.Namespace) -> int:
 
 
 def run_hooks_install(args: argparse.Namespace) -> int:
-    """Add the PreToolUse hook to the project's personal, git-ignored Claude Code settings (spec §9)."""
-    path = Path(args.project) / ".claude" / "settings.local.json"
+    """Add the PreToolUse hook to a project's personal settings, or with --user to every repo (ADR0012)."""
+    claude = Path.home() / ".claude" if args.user else Path(args.project) / ".claude"
+    path = claude / ("settings.json" if args.user else "settings.local.json")
     settings = json.loads(path.read_text()) if path.exists() else {}
     command = f"{Path(sys.argv[0]).resolve()} check --hook --org {args.org}"
     entries = settings.setdefault("hooks", {}).setdefault("PreToolUse", [])
@@ -127,7 +128,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     install = hooks.add_parser("install", help="add the PreToolUse hook to .claude/settings.local.json")
     install.add_argument("--org", type=org_name, required=True)
-    install.add_argument("--project", default=".", help="the repository to install into (default: here)")
+    where = install.add_mutually_exclusive_group()
+    where.add_argument("--project", default=".", help="the repository to install into (default: here)")
+    where.add_argument("--user", action="store_true", help="guard every repo you open (~/.claude/settings.json)")
     install.set_defaults(run=run_hooks_install)
     return parser
 
