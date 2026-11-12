@@ -273,7 +273,7 @@ Claude Code hooks call the CLI; every script reads the hook's JSON from stdin.
 | Event | Command | Behaviour |
 |---|---|---|
 | `SessionStart` | `precedent context` | Reload: prints current decisions + recent attempts for the repo, branch and recently changed files; ranked (scope match > recency > PageRank of approvers), capped by token budget; printed text becomes session context (verify) |
-| `PreToolUse` matcher `Edit\|Write` | `precedent check --hook` | Enforce: builds a plan/diff from `tool_input`; BLOCK → exit 2 with reason + source on stderr (edit refused, agent sees why) (verify); WARN → reason returned as context; errors fail open |
+| `PreToolUse` matcher `Edit\|Write\|MultiEdit` | `precedent check --hook --org <org>` | Enforce: the lines a Write/Edit/MultiEdit adds become a change; BLOCK → JSON `permissionDecision: deny` with the decision and quote as reason; WARN → JSON `additionalContext` (the edit proceeds, the agent reads the decision); CLEAR → no output. Precedent's own errors exit 0 with no output (fail open). Installed by `precedent hooks install` |
 | `PreCompact`, `Stop` | `precedent capture --transcript <path>` | Capture: redact → extract candidates from turns after the session cursor → `DecisionRecord(tier=capture, status=proposed, confirmed=False)` with transcript quotes; scope from files touched in the session; conflicting scope + polarity → proposed `SUPERSEDES` |
 | `SessionEnd` | `precedent review --session <id>` | Confirm: lists this session's candidates (accept / edit / reject) |
 
