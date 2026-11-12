@@ -91,6 +91,8 @@ We ran real Claude Code sessions on a repo whose `CLAUDE.md` still says to use `
 | Stale `CLAUDE.md` + "this file may be out of date" | 5/5 | 0/5 |
 | **Stale `CLAUDE.md` + Precedent** | **5/5** | **5/5** |
 
+Across three repos and three decisions held only in a central decision graph ([E2](evals/experiments/e2/README.md)), the stale file and the one-sentence fix both got 0/9; with Precedent, 9/9.
+
 If your newer decision sits next to the code, a one-line note in `CLAUDE.md` already helps. Precedent matters when it doesn't: decisions kept in a central repo, a PR thread or another team's ADRs. Small study (5 runs each, one task, one model); the harness is in the repo so you can rerun it.
 
 On real Backstage history, the check flagged 9 of 9 PRs that added a package their ADRs advise against, and none of the 79 PRs merged in an ordinary week.

@@ -1,0 +1,3 @@
+http-service	Add a fetchUsers() function to src/users.ts that GETs https://example.com/api/users and returns the parsed JSON. Follow this repository's conventions.
+web-ui	Add a Badge component to src/Badge.tsx that renders its label prop inside a <span>. Follow this repository's conventions.
+dates-lib	Add a formatDate(date: Date) function to src/dates.ts that returns the date formatted as yyyy-MM-dd. Follow this repository's conventions.
