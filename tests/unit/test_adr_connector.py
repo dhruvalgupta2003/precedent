@@ -87,6 +87,51 @@ def test_templates_and_other_files_are_skipped(tmp_path):
     assert list(records) == ["backstage/ADR014"]
 
 
+def test_adr_tools_status_sections_give_status_and_links_both_ways(tmp_path):
+    """Nygard / adr-tools: no front matter, a `## Status` section, links in both files."""
+    old = "# 2. Use X\n\nDate: 2016-02-12\n\n## Status\n\nSuperseded by [3. Use Y](0003-use-y.md)\n\n## Context\n"
+    new = "# 3. Use Y\n\n## Status\n\nAccepted\n\nSupersedes [2. Use X](0002-use-x.md)\n\n## Context\n"
+    records = by_id(tmp_path, {"0002-use-x.md": old, "0003-use-y.md": new})
+
+    assert (records["backstage/ADR0002"].title, records["backstage/ADR0002"].status) == ("2. Use X", "superseded")
+    assert records["backstage/ADR0003"].status == "accepted"
+    assert records["backstage/ADR0003"].supersedes == ("backstage/ADR0002",)  # stated twice, stored once
+
+
+def test_madr_front_matter_status_can_name_the_successor(tmp_path):
+    old = "---\nstatus: superseded by [ADR-0005](0005-use-y.md)\n---\n\n# Use X\n"
+    new = "---\nstatus: accepted\n---\n\n# Use Y\n"
+    records = by_id(tmp_path, {"0001-use-x.md": old, "0005-use-y.md": new})
+
+    assert records["backstage/ADR0001"].status == "superseded"
+    assert records["backstage/ADR0005"].supersedes == ("backstage/ADR0001",)
+
+
+def test_a_supersedes_field_in_front_matter_links_to_the_older_decision(tmp_path):
+    old = "---\ntitle: 'ADR0004: Old'\nstatus: superseded\n---\n"
+    new = "---\ntitle: 'ADR0012: New'\nstatus: accepted\nsupersedes: ADR0004\n---\n"
+    records = by_id(tmp_path, {"0004-old.md": old, "0012-new.md": new})
+
+    assert records["backstage/ADR0012"].supersedes == ("backstage/ADR0004",)
+
+
+def test_an_unknown_declared_status_is_flagged_never_guessed(tmp_path):
+    record = by_id(tmp_path, {"0007-typo.md": "---\nstatus: imlpemented\n---\n\n# Typo\n"})["backstage/ADR0007"]
+
+    assert (record.status, record.needs_review) == (None, True)
+
+
+def test_precedent_reads_its_own_adrs():
+    """Dogfood: our docs/adr uses front-matter status; ADR0006 replaced ADR0005 (golden case W13)."""
+    records = {r.id: r for r in adr.records(str(Path(__file__).parents[2] / "docs" / "adr"), "precedent")}
+
+    assert len(records) >= 11
+    assert not any(r.needs_review for r in records.values())
+    assert records["precedent/ADR0005"].status == "superseded"
+    assert records["precedent/ADR0006"].supersedes == ("precedent/ADR0005",)
+    assert records["precedent/ADR0001"].title.startswith("ADR0001:")
+
+
 def test_instructions_in_the_body_cannot_change_status_or_links(tmp_path):
     """Safety X01: ingested text is data, never instructions."""
     text = (
