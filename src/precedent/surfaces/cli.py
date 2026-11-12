@@ -73,6 +73,23 @@ def run_hooks_install(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_doctor(args: argparse.Namespace) -> int:
+    """Instruction-file lines (CLAUDE.md, AGENTS.md, …) that contradict a live decision. Exit 1 if any (CI)."""
+    reader = None if args.no_ai else service.default_scope_reader("instructions")
+    files, found = service.doctor(_graph(args.org), args.project, reader)
+    for stale in found:
+        print(f'{stale.message}\n    the file says: "{" ".join(stale.quote.split())}"')
+        if stale.decision_quote:
+            print(f'    {stale.decision} says: "{" ".join(stale.decision_quote.split())}"' + _at(stale.source))
+    if not found:
+        print(f"No stale lines in {len(files)} instruction file{'s' if len(files) != 1 else ''}.")
+    return 1 if found else 0
+
+
+def _at(source: str | None) -> str:
+    return f" ({source})" if source else ""
+
+
 def _hook(org: str) -> int:
     """Claude Code PreToolUse. Fails open: Precedent's own errors never block the agent (H3)."""
     try:
@@ -100,6 +117,11 @@ def _parser() -> argparse.ArgumentParser:
     check.add_argument("--format", choices=["text", "json"], default="text")
     check.add_argument("--hook", action="store_true", help="read a Claude Code PreToolUse event from stdin")
     check.set_defaults(run=run_check)
+    doctor = commands.add_parser("doctor", help="find lines in CLAUDE.md/AGENTS.md that contradict live decisions")
+    doctor.add_argument("--org", type=org_name, required=True)
+    doctor.add_argument("--project", default=".", help="the repository to check (default: here)")
+    doctor.add_argument("--no-ai", action="store_true", help="only flag lines that mention what a decision avoids")
+    doctor.set_defaults(run=run_doctor)
     hooks = commands.add_parser("hooks", help="manage the Claude Code hook").add_subparsers(
         dest="action", required=True
     )

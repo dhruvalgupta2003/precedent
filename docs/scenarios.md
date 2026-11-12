@@ -94,7 +94,7 @@ Contracts (data model, graph schema, pre-flight rules) live in [spec.md](spec.md
 | H1 | Agent | Claude Code is about to edit a backend file and add `node-fetch` → the `PreToolUse` hook adds ADR014 and its quote to the agent's context (WARN); BLOCK only under ADR0004 | *new surface test* | D2 |
 | H2 | Agent | The edit touches no decision → the hook prints nothing and exits 0 | *new surface test* | D2 |
 | H3 | Platform | FalkorDB is down when the hook runs → it fails open: exits 0, logs to stderr, never blocks | *new surface test* | D2 |
-| R1 | Tech lead | A CLAUDE.md or AGENTS.md rule says "use node-fetch" while ADR014 (current) avoids it → `precedent doctor` reports the stale rule with both quotes | *new integration test* | D2 |
+| R1 | Tech lead | A CLAUDE.md or AGENTS.md rule says "use node-fetch" while ADR014 (current) avoids it → `precedent doctor` reports the stale rule with both quotes | `test_doctor`, `test_doctor_on_a_project` | D2 ✅ |
 | R2 | Platform | Instruction-file rules are ingested as decisions, each with a verbatim quote; AI-read, so WARN only | *new eval cases* | D2 |
 | R3 | Contributor | ADRs that declare `status:` and `supersedes:` in front matter (MADR/Nygard, Precedent's own) are read without AI | *new unit test*, W12, W13 | D2 |
 | E1 | CTO | Proof run: an agent works on a repo whose instruction file is stale, with and without Precedent; report how often it follows the current decision | [`evals/experiments/e1`](../evals/experiments/e1/README.md): 5/5 with Precedent vs 0/5 for the one-sentence fix when the decision isn't in the repo | D2 ✅ |

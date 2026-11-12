@@ -4,7 +4,7 @@ import os
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 from falkordb import Graph
 
@@ -12,6 +12,7 @@ from precedent.adapters.falkor import ensure_schema, rules, save_decision
 from precedent.adapters.llm import scope_reader
 from precedent.connectors import adr
 from precedent.core.diff import Change, facts
+from precedent.core.doctor import StaleLine, mentions, stale_lines
 from precedent.core.errors import ExtractionError
 from precedent.core.grounding import keep_grounded
 from precedent.core.model import DecisionRecord, Scope
@@ -43,10 +44,42 @@ def preflight(graph: Graph, changes: list[Change]) -> Report:
     return check(facts(changes), rules(graph))
 
 
-def default_scope_reader() -> ScopeReader | None:
-    """The configured extraction model (PRECEDENT_MODEL_EXTRACT), or None to ingest without AI."""
+def default_scope_reader(kind: Literal["adr", "instructions"] = "adr") -> ScopeReader | None:
+    """The configured extraction model (PRECEDENT_MODEL_EXTRACT), or None to work without AI."""
     model = os.environ.get("PRECEDENT_MODEL_EXTRACT")
-    return scope_reader(model, cache_dir=Path(".cache/precedent/extract")) if model else None
+    return scope_reader(model, cache_dir=Path(".cache/precedent/extract"), kind=kind) if model else None
+
+
+# Where coding agents read their instructions; nested CLAUDE.md/AGENTS.md count too.
+INSTRUCTION_FILES = (
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".cursorrules",
+    ".github/copilot-instructions.md",
+    ".cursor/rules/*.md*",
+    "**/CLAUDE.md",
+    "**/AGENTS.md",
+)
+
+
+def doctor(graph: Graph, project: str, read_stances: ScopeReader | None = None) -> tuple[list[Path], list[StaleLine]]:
+    """Instruction-file lines in a project that contradict a live decision (scenario R1)."""
+    root = Path(project)
+    files = sorted({p for pattern in INSTRUCTION_FILES for p in root.glob(pattern) if _instruction_file(p, root)})
+    live = rules(graph)
+    found: list[StaleLine] = []
+    for path in files:
+        text, name = path.read_text(errors="replace"), str(path.relative_to(root))
+        try:
+            stances = keep_grounded(read_stances(text), text) if read_stances else None
+        except ExtractionError:
+            stances = None
+        found += stale_lines(name, text, stances, live) if stances is not None else mentions(name, text, live)
+    return files, found
+
+
+def _instruction_file(path: Path, root: Path) -> bool:
+    return path.is_file() and not {"node_modules", ".git"} & set(path.relative_to(root).parts)
 
 
 def _with_scopes(record: DecisionRecord, read_scopes: ScopeReader, counts: Counter[str]) -> DecisionRecord:

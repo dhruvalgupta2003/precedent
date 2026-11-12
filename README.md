@@ -61,6 +61,9 @@ git diff main | uv run precedent check --org myteam          # exit 0 CLEAR, 1 W
 
 # 3. Guard Claude Code: before an edit, the agent gets the current decision and its quote
 uv run precedent hooks install --org myteam                  # writes .claude/settings.local.json
+
+# 4. Find lines in CLAUDE.md / AGENTS.md / Cursor / Copilot rules that contradict a current decision
+uv run --env-file .env precedent doctor --org myteam          # exit 1 if any (CI)
 ```
 
 What the agent sees when it is about to add `node-fetch` to a Backstage backend:
@@ -95,7 +98,7 @@ On real Backstage history, the check flagged 9 of 9 PRs that added a package the
 
 | Surface | Status |
 |---|---|
-| CLI: `ingest`, `check`, `hooks install` | ✅ |
+| CLI: `ingest`, `check`, `doctor`, `hooks install` | ✅ |
 | Claude Code `PreToolUse` hook | ✅ |
 | CLI: `why`, `review`, `context`, `capture` | planned |
 | MCP server, GitHub Action, web page | planned |

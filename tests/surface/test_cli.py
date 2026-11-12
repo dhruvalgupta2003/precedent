@@ -3,6 +3,7 @@ import json
 
 import pytest
 
+from precedent.core.doctor import StaleLine
 from precedent.core.model import Scope
 from precedent.core.preflight import Finding, Report
 from precedent.surfaces.cli import main
@@ -79,3 +80,28 @@ def test_hooks_install_adds_the_hook_once_and_keeps_other_settings(tmp_path):
     [entry] = saved["hooks"]["PreToolUse"]
     assert entry["matcher"] == "Edit|Write|MultiEdit"
     assert "check --hook --org backstage" in entry["hooks"][0]["command"]
+
+
+def test_doctor_prints_each_stale_line_and_exits_1(tmp_path, monkeypatch, capsys):
+    stale = StaleLine(
+        file="CLAUDE.md",
+        line=4,
+        quote="Use `node-fetch`.",
+        decision="b/ADR014",
+        message="CLAUDE.md:4 says to prefer node-fetch, but b/ADR014 (current) says avoid node-fetch",
+        decision_quote="move away from node-fetch",
+        source="adr014.md",
+    )
+    monkeypatch.setattr("precedent.service.doctor", lambda graph, project, reader: ([tmp_path / "CLAUDE.md"], [stale]))
+
+    assert main(["doctor", "--org", "backstage", "--project", str(tmp_path), "--no-ai"]) == 1
+    out = capsys.readouterr().out
+    assert "CLAUDE.md:4" in out
+    assert '"move away from node-fetch"' in out
+
+
+def test_doctor_says_so_when_every_instruction_file_is_current(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("precedent.service.doctor", lambda graph, project, reader: ([tmp_path / "CLAUDE.md"], []))
+
+    assert main(["doctor", "--org", "backstage", "--project", str(tmp_path), "--no-ai"]) == 0
+    assert "No stale lines in 1 instruction file" in capsys.readouterr().out
