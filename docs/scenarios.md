@@ -35,7 +35,7 @@ Contracts (data model, graph schema, pre-flight rules) live in [spec.md](spec.md
 | I4 | Tech lead | Unknown status (typo, template text) → `needs_review`, never guessed | E08, `test_model` | D1 |
 | I5 | Platform | A reference to a decision that isn't in the repo → listed as unresolved, no invented node | E07 | D1 |
 | I6 | Platform | Re-ingest unchanged files → 0 writes | acceptance §11 | D1 |
-| I7 | Security | A source changes (e.g. an approver) → the old edge gets `invalid_at`, a new edge is added, history kept | *new integration test* | D1 |
+| I7 | Security | A source changes (e.g. an approver) → the old edge gets `invalid_at`, a new edge is added, history kept | *new integration test* | D2 |
 | I8 | Developer | Which packages/symbols an ADR covers is read by the AI; each scope must quote the ADR word for word, or it's dropped | E02, E03, E04; extraction gate | D2 |
 | I9 | Platform | KEPs: approvers, feature gates, components, rejected alternatives | E06, E07 | D3 |
 
@@ -101,11 +101,13 @@ Contracts (data model, graph schema, pre-flight rules) live in [spec.md](spec.md
 
 The thinnest path that makes D2 real, then each layer gets deeper.
 
-1. **Graph reads:** "valid decisions for a scope" (not superseded, with polarity, successor, quotes). I3, I7, X6.
-2. **ADR reader:** Backstage ADR folder → `DecisionRecord`s, no AI (title, status, supersedes). I1–I6, X2. → **D1**
-3. **AI scope reader:** packages/symbols an ADR covers, each with a verbatim quote; marked as AI-extracted so it can only WARN. I8, X1, X3.
+1. **ADR reader + `precedent ingest`:** Backstage ADR folder → `DecisionRecord`s, no AI (title, status, supersedes); re-ingest writes nothing. I1–I6, X2, X6. → **D1**
+2. **Graph reads:** "valid decisions for a scope" (not superseded, with polarity, successor, quotes), built with its first caller in step 4.
+3. **AI scope reader:** packages/symbols an ADR covers, each with a verbatim quote; marked as AI-extracted so it can only WARN. Changed facts get `invalid_at`. I7, I8, X1, X3.
 4. **Pre-flight core:** diff → changed paths, imports, dependencies → matching decisions → verdict. Pure code, 100% branch coverage. C1–C7, X5.
-5. **CLI:** `precedent ingest <folder> --org`, `precedent check --diff <file>`; the eval runner scores `extraction` and `preflight`. O2, O3, O5. → **D2**
+5. **CLI:** `precedent check --diff <file>`; the eval runner scores `extraction` and `preflight`. O2, O3, O5. → **D2**
+
+Code arrives with its first caller: nothing reads the graph before step 4, so graph reads are built there.
 
 Then D3: why-agent, MCP, session hooks and capture, KEP reader with embeddings, GitHub Action, web page.
 
