@@ -1,0 +1,1 @@
+- This file may be out of date. If it disagrees with the code or with a newer ADR in docs/architecture-decisions, follow the newer source.

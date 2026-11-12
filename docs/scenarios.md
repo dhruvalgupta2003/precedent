@@ -97,7 +97,7 @@ Contracts (data model, graph schema, pre-flight rules) live in [spec.md](spec.md
 | R1 | Tech lead | A CLAUDE.md or AGENTS.md rule says "use node-fetch" while ADR014 (current) avoids it → `precedent doctor` reports the stale rule with both quotes | *new integration test* | D2 |
 | R2 | Platform | Instruction-file rules are ingested as decisions, each with a verbatim quote; AI-read, so WARN only | *new eval cases* | D2 |
 | R3 | Contributor | ADRs that declare `status:` and `supersedes:` in front matter (MADR/Nygard, Precedent's own) are read without AI | *new unit test*, W12, W13 | D2 |
-| E1 | CTO | Proof run: an agent works on a repo whose instruction file is stale, with and without Precedent; report how often it follows the current decision | `evals/` experiment | D2 |
+| E1 | CTO | Proof run: an agent works on a repo whose instruction file is stale, with and without Precedent; report how often it follows the current decision | [`evals/experiments/e1`](../evals/experiments/e1/README.md): 5/5 with Precedent vs 0/5 for the one-sentence fix when the decision isn't in the repo | D2 ✅ |
 
 ## 8. Operate
 
