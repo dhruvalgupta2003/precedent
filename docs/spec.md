@@ -25,6 +25,8 @@ This spec defines the MVP shown at the hackathon. Anything marked **(verify)** m
 
 ## 2. Users and stories
 
+Full list of stakeholders and scenarios, each with its check and demo milestone: [scenarios.md](scenarios.md).
+
 | As a… | I want… | So that… |
 |---|---|---|
 | Developer | `precedent why "why don't we use node-fetch?"` | I learn the current rule and its source in seconds |
