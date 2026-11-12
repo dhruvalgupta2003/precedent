@@ -1,6 +1,6 @@
 # One command per task. CI calls these same targets, so local and CI can't drift (ADR0008).
 .DEFAULT_GOAL := help
-.PHONY: help install format lint typecheck test-fast test test-integration audit check
+.PHONY: help install format lint typecheck test-fast test test-integration eval audit check
 
 UV   := uv run --locked
 # All generated files live in .cache/ (git-ignored) so the project root stays clean.
@@ -28,7 +28,7 @@ lint:  ## Lint, format check, spelling, dependency hygiene, architecture contrac
 	$(UV) lint-imports --cache-dir .cache/import-linter
 
 typecheck:  ## Static type check
-	$(UV) ty check src tests
+	$(UV) ty check src tests evals
 
 test-fast:  ## Unit tests only, no coverage (the edit-run loop)
 	$(UV) pytest tests/unit -q
@@ -40,6 +40,9 @@ test:  ## All tests in parallel + coverage gates (>=90% overall, 100% core)
 
 test-integration:  ## Only tests that need FalkorDB (docker compose up -d)
 	$(UV) pytest -m integration -q
+
+eval:  ## Golden eval suites; pending until features land (release gate: EVAL_FLAGS=--strict)
+	$(UV) python evals/run.py $(EVAL_FLAGS)
 
 audit:  ## Vulnerabilities in all locked deps (dev tools run in CI too); licence gate on what we ship
 	mkdir -p .cache
