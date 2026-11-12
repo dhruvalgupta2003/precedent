@@ -61,6 +61,7 @@ git diff main | uv run precedent check --org myteam          # exit 0 CLEAR, 1 W
 
 # 3. Guard Claude Code: before an edit, the agent gets the current decision and its quote
 uv run precedent hooks install --org myteam                  # writes .claude/settings.local.json
+uv run precedent hooks install --org myteam --user           # or: guard every repo you open
 
 # 4. Find lines in CLAUDE.md / AGENTS.md / Cursor / Copilot rules that contradict a current decision
 uv run --env-file .env precedent doctor --org myteam          # exit 1 if any (CI)
