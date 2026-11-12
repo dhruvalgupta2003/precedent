@@ -8,7 +8,7 @@ Contracts (data model, graph schema, pre-flight rules) live in [spec.md](spec.md
 | Demo | Shows | Done when |
 |---|---|---|
 | **D1** The graph knows the truth | Real Backstage ADRs in the graph, with every "replaced by" chain | All D1 checks pass in CI |
-| **D2** It catches a bad change | `precedent check` on a diff warns with the decision and its quote | All D2 checks pass; preflight gate: **0 false BLOCK**, WARN recall ≥ 0.9 |
+| **D2** It stops an agent acting on a dead or contradicted decision | A Claude Code agent about to add node-fetch gets ADR014 and its quote at that moment; `precedent check` does the same for a diff | All D2 checks pass; preflight gate: **0 false BLOCK**, WARN recall ≥ 0.9; proof run E1 reported |
 | **D3** Agents ask before acting | An agent is stopped before writing, and can ask "why" | All D3 checks pass |
 
 ## 1. Stakeholders
@@ -87,35 +87,50 @@ Contracts (data model, graph schema, pre-flight rules) live in [spec.md](spec.md
 | X6 | Security | Hostile strings in any field (quotes, `}) DETACH DELETE …`) → stored exactly, no Cypher injection | *new integration test* | D1 |
 | X7 | Security | One org's request never reads another org's graph | *new test* | D2 |
 
-## 7. Operate
+## 7. Agent hooks and instruction files (ADR0011)
 
 | ID | Who | Situation → expected | Check | Demo |
 |---|---|---|---|---|
-| O1 | Platform | FalkorDB is down → check and hooks **fail open** with a clear message; never block because Precedent broke | *new test* | D3 |
+| H1 | Agent | Claude Code is about to edit a backend file and add `node-fetch` → the `PreToolUse` hook adds ADR014 and its quote to the agent's context (WARN); BLOCK only under ADR0004 | *new surface test* | D2 |
+| H2 | Agent | The edit touches no decision → the hook prints nothing and exits 0 | *new surface test* | D2 |
+| H3 | Platform | FalkorDB is down when the hook runs → it fails open: exits 0, logs to stderr, never blocks | *new surface test* | D2 |
+| R1 | Tech lead | A CLAUDE.md or AGENTS.md rule says "use node-fetch" while ADR014 (current) avoids it → `precedent doctor` reports the stale rule with both quotes | *new integration test* | D2 |
+| R2 | Platform | Instruction-file rules are ingested as decisions, each with a verbatim quote; AI-read, so WARN only | *new eval cases* | D2 |
+| R3 | Contributor | ADRs that declare `status:` and `supersedes:` in front matter (MADR/Nygard, Precedent's own) are read without AI | *new unit test*, W12, W13 | D2 |
+| E1 | CTO | Proof run: an agent works on a repo whose instruction file is stale, with and without Precedent; report how often it follows the current decision | `evals/` experiment | D2 |
+
+## 8. Operate
+
+| ID | Who | Situation → expected | Check | Demo |
+|---|---|---|---|---|
+| O1 | Platform | FalkorDB is down → check and hooks **fail open** with a clear message; never block because Precedent broke | *new test* (see H3) | D2 |
 | O2 | Platform | The AI provider is down or slow → structured ingest still works; checks still run on the existing graph | *new test* | D2 |
 | O3 | CTO | Every AI call, graph query and verdict is traced: name, duration, tokens, cost (never raw ingested text) | `test_telemetry`, cost_latency suite | D2 |
 | O4 | Contributor | FalkorDB or dependency upgrade → integration tests and evals gate the merge | CI (exists) | — |
 | O5 | CTO | `make eval` shows the scoreboard; a single false BLOCK fails the preflight gate | `evals/run.py` (exists) | D2 |
 
-## 8. Build order (walking skeleton to D2)
+## 9. Build order (walking skeleton to D2)
 
 The thinnest path that makes D2 real, then each layer gets deeper.
 
 1. **ADR reader + `precedent ingest`:** Backstage ADR folder → `DecisionRecord`s, no AI (title, status, supersedes); re-ingest writes nothing. I1–I6, X2, X6. → **D1**
-2. **Graph reads:** "valid decisions for a scope" (not superseded, with polarity, successor, quotes), built with its first caller in step 4.
-3. **AI scope reader:** packages/symbols an ADR covers, each with a verbatim quote; marked as AI-extracted so it can only WARN. Changed facts get `invalid_at`. I7, I8, X1, X3.
-4. **Pre-flight core:** diff → changed paths, imports, dependencies → matching decisions → verdict. Pure code, 100% branch coverage. C1–C7, X5.
-5. **CLI:** `precedent check --diff <file>`; the eval runner scores `extraction` and `preflight`. O2, O3, O5. → **D2**
+2. **Declared status:** read `status:`/`supersedes:` front matter too (MADR/Nygard, our own ADRs). R3.
+3. **Graph reads:** "valid decisions for a scope" (not superseded, with polarity, successor, quotes), built with its first caller.
+4. **AI scope reader:** packages/symbols an ADR or instruction-file rule covers, each with a verbatim quote; marked as AI-extracted so it can only WARN. Changed facts get `invalid_at`. I7, I8, R2, X1, X3.
+5. **Pre-flight core:** added text (diff or agent edit) → imports, dependencies → matching decisions → verdict with quote. Pure code, 100% branch coverage. C1–C7, X5.
+6. **Surfaces:** `precedent check --diff <file>` and `precedent hook` for Claude Code `PreToolUse`; the eval runner scores `extraction` and `preflight`. H1–H3, O2, O3, O5. → **D2**
+7. **Proof and doctor:** run E1; `precedent doctor` for stale instruction-file rules. R1, E1.
 
 Code arrives with its first caller: nothing reads the graph before step 4, so graph reads are built there.
 
 Then D3: why-agent, MCP, session hooks and capture, KEP reader with embeddings, GitHub Action, web page.
 
-## 9. Decisions the CTO will be asked to make
+## 10. Decisions the CTO will be asked to make
 
 | When | Decision |
 |---|---|
 | Step 3 | How AI-extracted scopes are marked so they can only WARN (a flag on the edge, or a separate tier) |
 | Step 3 | Extraction model and the cost budget per ingested ADR |
 | Step 4 | Scope matching rules: exact package, `@scope/` prefix, path globs |
-| D3 | Fail-open details for hooks (timeout, message, logging) |
+| Before publishing | The name: "Precedent" is used by a small unrelated project (ADR0011) |
+| Step 6 | Hook defaults: WARN as context only, or also `ask` the user |
