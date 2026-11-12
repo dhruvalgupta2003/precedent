@@ -36,6 +36,8 @@ def response(report: Report) -> dict | None:
 
 
 def describe(report: Report) -> str:
+    if not report.findings:
+        return "Precedent CLEAR: no current decision is against this change."
     lines = [f"Precedent {report.verdict}: this change touches decisions the team recorded."]
     for f in report.findings:
         quote = " ".join(f.quote.split()) if f.quote else ""

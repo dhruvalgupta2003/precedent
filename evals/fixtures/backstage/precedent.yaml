@@ -1,0 +1,8 @@
+# Reviewed knowledge (ADR0013): what each decision also covers, beyond the names its ADR spells out.
+# Every entry is reviewed in a PR. Declared entries of an accepted ADR may BLOCK.
+ADR006:
+  - {kind: symbol, value: React.FunctionComponent, polarity: avoid, why: "React.FC is short for React.FunctionComponent"}
+ADR010:
+  - {kind: package, value: moment-timezone, polarity: avoid, why: "moment-timezone is an add-on that brings in Moment"}
+ADR014:
+  - {kind: package, value: node-fetch-native, polarity: avoid, why: "node-fetch-native ships node-fetch under another name"}

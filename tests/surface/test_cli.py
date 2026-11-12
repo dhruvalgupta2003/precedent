@@ -4,6 +4,7 @@ import json
 import pytest
 
 from precedent.core.doctor import StaleLine
+from precedent.core.errors import KnowledgeError
 from precedent.core.model import Scope
 from precedent.core.preflight import Finding, Report
 from precedent.surfaces.cli import main
@@ -29,6 +30,16 @@ def test_no_falkordb_gives_a_clear_error_and_exit_code_1(tmp_path, monkeypatch, 
 
     assert main(["ingest", str(tmp_path), "--org", "backstage"]) == 1
     assert "No FalkorDB at redis://localhost:1" in capsys.readouterr().err
+
+
+def test_a_bad_knowledge_file_prints_where_and_exits_1(tmp_path, monkeypatch, capsys):
+    def ingest(*_):
+        raise KnowledgeError("precedent.yaml: no ADR 'ADR41' in this folder")
+
+    monkeypatch.setattr("precedent.service.ingest", ingest)
+
+    assert main(["ingest", str(tmp_path), "--org", "backstage", "--no-ai"]) == 1
+    assert "precedent.yaml: no ADR 'ADR41'" in capsys.readouterr().err
 
 
 def report(verdict: str) -> Report:

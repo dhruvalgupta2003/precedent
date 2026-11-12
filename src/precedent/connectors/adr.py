@@ -11,8 +11,11 @@ from pathlib import Path
 from typing import NamedTuple
 
 import yaml
+from pydantic import ValidationError
 
-from precedent.core.model import DecisionRecord, SourceRef, Status, normalise_status
+from precedent.core.errors import KnowledgeError
+from precedent.core.grounding import looks_like_code
+from precedent.core.model import DecisionRecord, Scope, SourceRef, Status, normalise_status
 
 ADR_FILE = re.compile(r"(?:adr)?(\d{3,4})-[\w.-]+\.md")
 COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -20,6 +23,7 @@ NOTE = re.compile(r":::note\[Superseded\](.*?):::", re.DOTALL | re.IGNORECASE)
 STATUS_SECTION = re.compile(r"^##\s+Status\s*$(.*?)(?=^#|\Z)", re.MULTILINE | re.DOTALL | re.IGNORECASE)
 HEADING = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 DECISION_SECTION = re.compile(r"^##\s+Decision\s*$(.*?)(?=^#|\Z)", re.MULTILINE | re.DOTALL | re.IGNORECASE)
+KNOWLEDGE_FILE = "precedent.yaml"
 LINK = re.compile(r"\]\((?:\./)?(?:adr)?(\d{3,4})-[^)]*\.md\)")
 REF = re.compile(r"(?:ADR-?)?(\d{3,4})", re.IGNORECASE)
 
@@ -47,6 +51,7 @@ def records(folder: str, org: str, source: str | None = None) -> Iterator[Decisi
         if (match := ADR_FILE.fullmatch(path.name)) and "template" not in path.name
     ]
     known = {a.id for a in adrs}
+    declared = _knowledge(Path(folder) / KNOWLEDGE_FILE, {a.id for a in adrs})
     # A link can be stated by either side; the graph stores it once, on the newer ADR.
     replaces = {a.id: list(a.supersedes) for a in adrs}
     for a in adrs:
@@ -64,8 +69,41 @@ def records(folder: str, org: str, source: str | None = None) -> Iterator[Decisi
             confirmed=True,
             supersedes=tuple(f"{prefix}/{i}" for i in dict.fromkeys(replaces[a.id]) if i in known),
             unresolved=tuple(i for i in dict.fromkeys(a.supersedes + a.successors) if i not in known),
+            scopes=tuple(declared.get(a.id, ())),
             sources=(SourceRef(url=str(a.path), kind="adr"),),
         )
+
+
+def _knowledge(path: Path, known: set[str]) -> dict[str, list[Scope]]:
+    """Reviewed knowledge (ADR0013): stances people declare per ADR in precedent.yaml, reviewed in PRs.
+
+    Declared scopes come from a structured source, so a confirmed, accepted decision may block on them.
+    """
+    if not path.exists():
+        return {}
+    found: dict[str, list[Scope]] = {}
+    for adr_id, entries in (yaml.safe_load(path.read_text()) or {}).items():
+        if adr_id not in known:
+            raise KnowledgeError(f"{KNOWLEDGE_FILE}: no ADR {adr_id!r} in this folder")
+        found[adr_id] = [_declared(adr_id, entry) for entry in entries or ()]
+    return found
+
+
+def _declared(adr_id: str, entry: object) -> Scope:
+    """One reviewed entry. A bad one stops ingest with a message that names it."""
+    where = f"{KNOWLEDGE_FILE}: {adr_id}: {entry}"
+    if not isinstance(entry, dict) or not entry.get("why"):
+        raise KnowledgeError(f"{where}: each entry needs kind, value, polarity and why")
+    try:
+        # The reason is the reviewer's words, not the ADR's: say so wherever it is quoted.
+        why = f"{entry['why']} ({KNOWLEDGE_FILE})"
+        scope = Scope.model_validate({k: v for k, v in entry.items() if k != "why"} | {"quote": why})
+    except ValidationError as exc:
+        error = exc.errors()[0]
+        raise KnowledgeError(f"{where}: {'.'.join(map(str, error['loc']))}: {error['msg']}") from exc
+    if not looks_like_code(scope):
+        raise KnowledgeError(f"{where}: {scope.value!r} doesn't look like a {scope.kind}")
+    return scope
 
 
 def text(path: Path) -> str:
