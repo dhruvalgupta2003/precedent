@@ -155,3 +155,17 @@ def test_a_link_inside_an_html_comment_is_not_a_link(tmp_path):
 
     assert records["backstage/ADR902"].status == "accepted"
     assert records["backstage/ADR014"].supersedes == ()
+
+
+def test_the_decision_statement_is_the_first_paragraph_of_the_decision_section(tmp_path):
+    text = (
+        "---\ntitle: 'ADR014: Fetch'\n---\n\n## Context\n\nBackground.\n\n## Decision\n\n"
+        "All code that is executed in Node.js should use the\nnative `fetch`. Example:\n\n```ts\nfetch(url)\n```\n"
+    )
+    records = by_id(tmp_path, {"adr014-use-fetch.md": text, "adr015-none.md": "---\ntitle: 'ADR015: None'\n---\n"})
+
+    assert (
+        records["backstage/ADR014"].statement
+        == "All code that is executed in Node.js should use the native `fetch`. Example:"
+    )
+    assert records["backstage/ADR015"].statement == ""

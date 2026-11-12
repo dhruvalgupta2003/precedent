@@ -19,6 +19,7 @@ COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 NOTE = re.compile(r":::note\[Superseded\](.*?):::", re.DOTALL | re.IGNORECASE)
 STATUS_SECTION = re.compile(r"^##\s+Status\s*$(.*?)(?=^#|\Z)", re.MULTILINE | re.DOTALL | re.IGNORECASE)
 HEADING = re.compile(r"^#\s+(.+)$", re.MULTILINE)
+DECISION_SECTION = re.compile(r"^##\s+Decision\s*$(.*?)(?=^#|\Z)", re.MULTILINE | re.DOTALL | re.IGNORECASE)
 LINK = re.compile(r"\]\((?:\./)?(?:adr)?(\d{3,4})-[^)]*\.md\)")
 REF = re.compile(r"(?:ADR-?)?(\d{3,4})", re.IGNORECASE)
 
@@ -27,6 +28,7 @@ class Parsed(NamedTuple):
     id: str  # "ADR013", "ADR0004"
     path: Path
     title: str
+    statement: str  # the Decision section's first paragraph, verbatim
     status: Status | None
     needs_review: bool
     supersedes: list[str]  # ids this ADR says it replaces
@@ -51,6 +53,7 @@ def records(source: str, org: str) -> Iterator[DecisionRecord]:
             id=f"{org}/{a.id}",
             org=org,
             title=a.title,
+            statement=a.statement,
             status=a.status,
             needs_review=a.needs_review,
             tier="structured",
@@ -75,7 +78,14 @@ def _parse(path: Path, adr_id: str) -> Parsed:
     status, flagged = _status(declared, title, noted=bool(note))
     successors = _links(declared, "superseded by") + [f"ADR{n}" for n in LINK.findall(note[1] if note else "")]
     supersedes = _links(declared, "supersedes") + _refs(meta.get("supersedes"))
-    return Parsed(adr_id, path, title, status, flagged, supersedes, successors)
+    return Parsed(adr_id, path, title, _statement(body), status, flagged, supersedes, successors)
+
+
+def _statement(body: str) -> str:
+    """The decision in the ADR's own words: its Decision section's first paragraph, line wraps joined."""
+    section = DECISION_SECTION.search(body)
+    first = section[1].strip().split("\n\n")[0] if section else ""
+    return " ".join(first.split())
 
 
 def _split(text: str) -> tuple[dict, str]:

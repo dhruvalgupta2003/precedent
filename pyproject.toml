@@ -117,4 +117,4 @@ forbidden_modules = ["falkordb", "pydantic_ai", "fastembed", "httpx", "fastapi",
 DEP002 = ["pydantic-ai-slim", "langfuse", "fastembed", "httpx", "mcp", "fastapi", "uvicorn"]
 
 [tool.codespell]
-skip = "uv.lock,*.lock,.git,.venv,.cache,data"
+skip = "uv.lock,*.lock,.git,.venv,.cache,data,evals/fixtures"

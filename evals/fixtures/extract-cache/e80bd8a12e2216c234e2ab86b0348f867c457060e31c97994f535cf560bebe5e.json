@@ -1,0 +1,1 @@
+[{"kind": "package", "value": "msw", "polarity": "prefer", "quote": "Moving forward, we have decided that any `fetch` or `XMLHTTPRequest` that\nhappens, should be mocked by using `msw`.", "unless": []}]

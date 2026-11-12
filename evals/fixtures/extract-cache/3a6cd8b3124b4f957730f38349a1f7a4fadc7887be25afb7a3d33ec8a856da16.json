@@ -1,0 +1,1 @@
+[{"kind": "symbol", "value": "export default", "polarity": "avoid", "quote": "We will stop using default exports except when absolutely necessary (such as", "unless": ["React.lazy"]}, {"kind": "symbol", "value": "React.lazy", "polarity": "applies", "quote": "such as\n[`React.lazy`](https://18.react.dev/reference/react/lazy) modules).", "unless": []}]
