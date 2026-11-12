@@ -73,19 +73,24 @@ class _Extraction(BaseModel):
 
 
 def scope_reader(
-    model: str | Model, cache_dir: Path, kind: Literal["adr", "instructions"] = "adr"
+    model: str | Model, cache_dir: Path, kind: Literal["adr", "instructions"] = "adr", *, offline: bool = False
 ) -> Callable[[str], list[Scope]]:
-    """A function text → extracted scopes, cached by (prompt version, model, text). `kind` picks the prompt."""
+    """A function text → extracted scopes, cached by (prompt version, model, text). `kind` picks the prompt.
+
+    offline=True only replays recorded answers and never builds a model client, so evals run in CI without a key
+    and give the same answers every time. A text nobody recorded is an error, never a silent empty answer.
+    """
     version, prompt, tag = PROMPTS[kind]
-    agent: Agent[None, _Extraction] = Agent(model, output_type=_Extraction, instructions=prompt)
+    agent = None if offline else Agent(model, output_type=_Extraction, instructions=prompt)
     name = model if isinstance(model, str) else model.model_name
 
     @traced("extract.scopes")
     def read(text: str) -> list[Scope]:
-        key = hashlib.sha256(f"{version}\n{name}\n{text}".encode()).hexdigest()
-        cached = cache_dir / f"{key}.json"
+        cached = cache_dir / f"{cache_key(version, name, text)}.json"
         if cached.exists():
             found = json.loads(cached.read_text())
+        elif agent is None:
+            raise ExtractionError(f"not recorded for {name} ({version}); rerun with a model key to record it")
         else:
             found = _ask(agent, f"<{tag}>\n{text}\n</{tag}>")
             cache_dir.mkdir(parents=True, exist_ok=True)
@@ -93,6 +98,10 @@ def scope_reader(
         return [Scope.model_validate({**s, "extracted": True}) for s in found]
 
     return read
+
+
+def cache_key(version: str, model: str, text: str) -> str:
+    return hashlib.sha256(f"{version}\n{model}\n{text}".encode()).hexdigest()
 
 
 def _ask(agent: Agent[None, _Extraction], wrapped: str) -> list[dict]:

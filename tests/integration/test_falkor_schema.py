@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from precedent.adapters.falkor import INDEXES, ensure_schema
@@ -21,7 +23,15 @@ def test_ensure_schema_is_safe_to_run_twice(graph):
     assert indexed(graph) == set(INDEXES)
 
 
+def operational(graph) -> bool:
+    rows = graph.query("CALL db.indexes() YIELD status RETURN status").result_set
+    return all(status == "OPERATIONAL" for (status,) in rows)
+
+
 def test_finding_a_decision_by_id_uses_the_index(graph):
     ensure_schema(graph)
+    deadline = time.monotonic() + 10
+    while not operational(graph) and time.monotonic() < deadline:  # indexes build in the background (Lesson 1)
+        time.sleep(0.05)
     plan = str(graph.explain("MATCH (d:Decision {id: $id}) RETURN d", {"id": "org/ADR014"}))
     assert "Node By Index Scan" in plan

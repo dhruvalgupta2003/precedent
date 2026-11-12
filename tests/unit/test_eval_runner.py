@@ -49,9 +49,9 @@ def test_a_low_pass_rate_fails_the_suite():
 
 def test_strict_mode_fails_while_anything_is_pending(tmp_path, monkeypatch):
     monkeypatch.setattr(harness, "RESULTS", tmp_path)
-    assert harness.main(["safety"]) == 0
-    assert harness.main(["safety", "--strict"]) == 1
-    saved = json.loads((tmp_path / "safety.json").read_text())
+    assert harness.main(["session_capture"]) == 0
+    assert harness.main(["session_capture", "--strict"]) == 1
+    saved = json.loads((tmp_path / "session_capture.json").read_text())
     assert {c["status"] for c in saved["cases"]} == {"pending"}
 
 
@@ -62,3 +62,14 @@ def test_every_golden_case_has_a_unique_id_and_an_expected_answer(suite):
     assert cases, f"{suite} has no cases"
     assert len(ids) == len(set(ids))
     assert all("expected" in c for c in cases)
+
+
+def test_the_scoreboard_can_be_written_as_a_markdown_table(tmp_path, monkeypatch):
+    monkeypatch.setattr(harness, "RESULTS", tmp_path)
+    summary = tmp_path / "summary.md"
+
+    harness.main(["why", "session_capture", "--summary", str(summary)])
+
+    table = summary.read_text()
+    assert "| Suite | Verdict | Detail |" in table
+    assert "| why | PENDING |" in table

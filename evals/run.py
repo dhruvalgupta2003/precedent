@@ -17,6 +17,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from scorers import score_extraction, score_preflight, score_safety
+
 HERE = Path(__file__).parent
 RESULTS = HERE.parent / ".cache" / "evals"
 
@@ -55,10 +57,10 @@ def _not_built(case: Case) -> tuple[bool, Any]:
 
 
 SCORERS: dict[str, Scorer] = {
-    "preflight": _not_built,
+    "preflight": score_preflight,
     "why": _not_built,
-    "extraction": _not_built,
-    "safety": _not_built,
+    "extraction": score_extraction,
+    "safety": score_safety,
     "session_capture": _not_built,
 }
 
@@ -102,14 +104,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("suites", nargs="*", choices=list(SCORERS), metavar="suite", help="default: all")
     parser.add_argument("--strict", action="store_true", help="treat pending cases as failures")
+    parser.add_argument("--summary", type=Path, help="also append the scoreboard as a markdown table (CI job summary)")
     args = parser.parse_args(argv)
-    failed = False
+    failed, rows = False, []
     for suite in args.suites or list(SCORERS):
         results = [run_case(SCORERS[suite], case) for case in load(suite)]
         save(suite, results)
         verdict, detail = gate(suite, results)
         failed |= verdict == "FAIL" or (args.strict and verdict == "PENDING")
+        rows.append(f"| {suite} | {verdict} | {detail} |")
         print(f"{suite:16} {verdict:8} {detail}")  # noqa: T201 - a CLI report
+    if args.summary:
+        with args.summary.open("a") as out:
+            out.write("### Eval scoreboard\n\n| Suite | Verdict | Detail |\n|---|---|---|\n" + "\n".join(rows) + "\n")
     return 1 if failed else 0
 
 

@@ -1,0 +1,1 @@
+[{"kind": "path", "value": "catalog-info.yaml", "polarity": "prefer", "quote": "The catalog file should be named\n\n```shell\ncatalog-info.yaml\n```", "unless": []}]

@@ -60,3 +60,15 @@ def test_instruction_files_get_their_own_prompt_and_cache(tmp_path):
 
     assert "<untrusted_document>" in str(messages[0])
     assert "instruction file" in calls[0].instructions
+
+
+def test_offline_replays_recorded_answers_and_never_calls_a_model(tmp_path):
+    calls: list = []
+    scope_reader(model(calls), cache_dir=tmp_path)("Recorded ADR.")  # record once
+
+    replay = scope_reader(model(calls), cache_dir=tmp_path, offline=True)
+
+    assert replay("Recorded ADR.")[0].value == "node-fetch"
+    assert len(calls) == 1
+    with pytest.raises(ExtractionError, match="not recorded"):
+        replay("An ADR nobody recorded.")

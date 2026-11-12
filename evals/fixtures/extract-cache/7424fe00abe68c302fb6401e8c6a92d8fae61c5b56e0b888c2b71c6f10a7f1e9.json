@@ -1,0 +1,1 @@
+[{"kind": "path", "value": "docs/adr", "polarity": "require", "quote": "A decision was made to store ADRs in a log in the project repository.", "unless": []}]
