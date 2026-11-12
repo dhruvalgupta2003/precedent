@@ -8,12 +8,14 @@ from typing import NamedTuple
 
 from falkordb import Graph
 
-from precedent.adapters.falkor import ensure_schema, save_decision
+from precedent.adapters.falkor import ensure_schema, rules, save_decision
 from precedent.adapters.llm import scope_reader
 from precedent.connectors import adr
+from precedent.core.diff import Change, facts
 from precedent.core.errors import ExtractionError
 from precedent.core.grounding import keep_grounded
 from precedent.core.model import DecisionRecord, Scope
+from precedent.core.preflight import Report, check
 
 ScopeReader = Callable[[str], list[Scope]]
 
@@ -34,6 +36,11 @@ def ingest(graph: Graph, folder: str, org: str, read_scopes: ScopeReader | None 
         record = _with_scopes(parsed, read_scopes, counts) if read_scopes else parsed
         counts["written" if save_decision(graph, record) else "unchanged"] += 1
     return IngestReport(**counts)
+
+
+def preflight(graph: Graph, changes: list[Change]) -> Report:
+    """Check a change against every live decision in the org's graph (docs/spec.md §7)."""
+    return check(facts(changes), rules(graph))
 
 
 def default_scope_reader() -> ScopeReader | None:

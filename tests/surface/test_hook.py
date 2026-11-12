@@ -1,0 +1,89 @@
+import json
+
+import pytest
+
+from precedent.core.diff import Change
+from precedent.core.model import Scope
+from precedent.core.preflight import Finding, Report
+from precedent.surfaces.hook import change_from_tool, describe, response
+
+AVOID = Scope(kind="package", value="node-fetch", polarity="avoid", quote="move away from node-fetch", extracted=True)
+FINDING = Finding(
+    kind="conflict",
+    decision="backstage/ADR014",
+    scope=AVOID,
+    message="backstage/ADR014 says avoid node-fetch",
+    quote="move away from node-fetch",
+    source="docs/adr014.md",
+)
+
+
+@pytest.mark.parametrize(
+    ("tool", "tool_input", "added"),
+    [
+        (
+            "Write",
+            {"file_path": "/repo/src/a.ts", "content": "import f from 'node-fetch';\nconst x = 1;"},
+            ("import f from 'node-fetch';", "const x = 1;"),
+        ),
+        (
+            "Edit",
+            {
+                "file_path": "/repo/src/a.ts",
+                "old_string": "const x = 1;",
+                "new_string": "const x = 1;\nimport f from 'node-fetch';",
+            },
+            ("import f from 'node-fetch';",),
+        ),
+        (
+            "MultiEdit",
+            {
+                "file_path": "/repo/src/a.ts",
+                "edits": [{"old_string": "a", "new_string": "a\nb"}, {"old_string": "", "new_string": "c"}],
+            },
+            ("b", "c"),
+        ),
+    ],
+    ids=["write", "edit-only-new-lines", "multi-edit"],
+)
+def test_an_edit_becomes_a_change_with_only_its_new_lines(tool, tool_input, added):
+    change = change_from_tool({"tool_name": tool, "tool_input": tool_input, "cwd": "/repo"})
+
+    assert change == Change("src/a.ts", added)
+
+
+def test_other_tools_are_not_checked():
+    assert change_from_tool({"tool_name": "Bash", "tool_input": {"command": "ls"}, "cwd": "/repo"}) is None
+
+
+def test_clear_says_nothing():
+    assert response(Report(verdict="CLEAR")) is None
+
+
+def test_warn_gives_the_agent_the_decision_and_its_quote_as_context():
+    result = response(Report(verdict="WARN", findings=(FINDING,)))
+    assert result is not None
+    out = result["hookSpecificOutput"]
+
+    assert out["hookEventName"] == "PreToolUse"
+    assert "permissionDecision" not in out  # a warning never stops the edit (ADR0004)
+    assert "backstage/ADR014 says avoid node-fetch" in out["additionalContext"]
+    assert '"move away from node-fetch"' in out["additionalContext"]
+
+
+def test_block_denies_the_edit_with_the_reason():
+    blocking = FINDING.model_copy(update={"blocks": True})
+    result = response(Report(verdict="BLOCK", findings=(blocking,)))
+    assert result is not None
+    out = result["hookSpecificOutput"]
+
+    assert out["permissionDecision"] == "deny"
+    assert "backstage/ADR014" in out["permissionDecisionReason"]
+    json.dumps(out)  # must be valid JSON for Claude Code
+
+
+def test_each_finding_is_one_line_even_when_the_quote_wraps():
+    wrapped = FINDING.model_copy(update={"quote": "move away\nfrom   node-fetch"})
+
+    text = describe(Report(verdict="WARN", findings=(wrapped,)))
+    assert text.splitlines()[1].endswith('"move away from node-fetch" (docs/adr014.md)')

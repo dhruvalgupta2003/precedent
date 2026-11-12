@@ -46,24 +46,45 @@ WARN  node-fetch: ADR013 was superseded by ADR014 — Node.js code uses native f
 3. **Check** — pre-flight matches a diff or an agent's plan against current decisions and returns BLOCK, WARN or CLEAR with the source path. Only confirmed decisions from structured sources can block.
 4. **Remember** — agents record attempts and propose decisions over MCP; a human confirms them.
 
-## Use it from
-
-| Surface | Command |
-|---|---|
-| CLI | `precedent why "…"`, `precedent check --diff -` |
-| Coding agents (MCP) | `decisions_for`, `why`, `preflight`, `record_decision`, `record_attempt` |
-| Pull requests | GitHub Action posts a comment on decisions the diff touches |
-| Browser | `precedent serve` → ask, pre-flight, graph path, review queue |
-
-## Quick start (planned)
+## Quick start
 
 ```sh
-docker compose up -d                 # FalkorDB + Browser on :3000
-cp .env.example .env                 # add ANTHROPIC_API_KEY
+docker compose up -d                       # FalkorDB on localhost:6380
+cp .env.example .env                       # optional: an LLM key, so it can read which code each ADR covers
 uv sync
-uv run precedent ingest adr docs/adr --org precedent
-uv run precedent why "why is FalkorDB the only store?" --org precedent
+
+# 1. Load your decisions: ADR folders in Backstage, MADR, adr-tools/Nygard or front-matter style
+uv run --env-file .env precedent ingest docs/adr --org myteam
+
+# 2. Check a change against the decisions that are still valid
+git diff main | uv run precedent check --org myteam          # exit 0 CLEAR, 1 WARN, 2 BLOCK
+
+# 3. Guard Claude Code: before an edit, the agent gets the current decision and its quote
+uv run precedent hooks install --org myteam                  # writes .claude/settings.local.json
 ```
+
+What the agent sees when it is about to add `node-fetch` to a Backstage backend:
+
+```
+Precedent WARN: this change touches decisions the team recorded.
+- backstage/ADR014 says avoid node-fetch: "We will gradually transition away from third party `fetch`
+  replacement packages such as `node-fetch` and others on the Node.js platform."
+- backstage/ADR013 (require node-fetch) was replaced by backstage/ADR014: "Backend (node) packages should
+  use the `node-fetch` package for HTTP data fetching."
+```
+
+It stays silent when nothing matches. Only decisions from a structured source that a human confirmed can block;
+anything the AI read from prose can only warn ([ADR0004](docs/adr/0004-only-confirmed-decisions-block.md)).
+If Precedent itself fails, the hook lets the edit through.
+
+## Use it from
+
+| Surface | Status |
+|---|---|
+| CLI: `ingest`, `check`, `hooks install` | ✅ |
+| Claude Code `PreToolUse` hook | ✅ |
+| CLI: `why`, `review`, `context`, `capture` | planned |
+| MCP server, GitHub Action, web page | planned |
 
 ## Project decisions
 
