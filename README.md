@@ -77,6 +77,20 @@ It stays silent when nothing matches. Only decisions from a structured source th
 anything the AI read from prose can only warn ([ADR0004](docs/adr/0004-only-confirmed-decisions-block.md)).
 If Precedent itself fails, the hook lets the edit through.
 
+## Does it work?
+
+We ran real Claude Code sessions on a repo whose `CLAUDE.md` still says to use `node-fetch`, after the team moved to native `fetch` ([E1](evals/experiments/e1/README.md)):
+
+| How often the agent followed the current decision | Decision in the repo | Decision not in the repo |
+|---|---|---|
+| Stale `CLAUDE.md` | 2/5 | 0/5 |
+| Stale `CLAUDE.md` + "this file may be out of date" | 5/5 | 0/5 |
+| **Stale `CLAUDE.md` + Precedent** | **5/5** | **5/5** |
+
+If your newer decision sits next to the code, a one-line note in `CLAUDE.md` already helps. Precedent matters when it doesn't: decisions kept in a central repo, a PR thread or another team's ADRs. Small study (5 runs each, one task, one model); the harness is in the repo so you can rerun it.
+
+On real Backstage history, the check flagged 9 of 9 PRs that added a package their ADRs advise against, and none of the 79 PRs merged in an ordinary week.
+
 ## Use it from
 
 | Surface | Status |

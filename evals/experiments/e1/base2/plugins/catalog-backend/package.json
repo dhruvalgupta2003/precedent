@@ -1,0 +1,7 @@
+{
+  "name": "@internal/plugin-catalog-backend",
+  "version": "0.1.0",
+  "dependencies": {
+    "@backstage/errors": "^1.2.0"
+  }
+}
