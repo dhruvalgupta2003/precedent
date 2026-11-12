@@ -113,3 +113,10 @@ def test_a_conflict_message_quotes_the_decision():
 
     assert report.findings[0].quote == "backstage/ADR010 on moment"
     assert "avoid moment" in report.findings[0].message
+
+
+def test_a_folder_scope_covers_the_files_inside_it():
+    avoid = rule("org/ADR1", "path", "packages/catalog-client", "avoid")
+
+    assert check(facts([Change("packages/catalog-client/src/index.ts", ("x",))]), [avoid]).verdict == "WARN"
+    assert check(facts([Change("packages/catalog-clientele/a.ts", ("x",))]), [avoid]).verdict == "CLEAR"

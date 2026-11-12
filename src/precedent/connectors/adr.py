@@ -61,6 +61,11 @@ def records(source: str, org: str) -> Iterator[DecisionRecord]:
         )
 
 
+def text(path: Path) -> str:
+    """The ADR as an LLM may see it: the body without front matter or HTML comments, so hidden text can't steer it."""
+    return COMMENT.sub("", _split(path.read_text())[1]).strip()
+
+
 def _parse(path: Path, adr_id: str) -> Parsed:
     meta, body = _split(path.read_text())
     body = COMMENT.sub("", body)

@@ -67,7 +67,8 @@ def matches(scope: Scope, facts: Facts) -> bool:
         prefix = value + "/" if value.startswith("@") and "/" not in value else None
         return value in facts.packages or bool(prefix and any(p.startswith(prefix) for p in facts.packages))
     if scope.kind == "path":
-        return any(fnmatch(path, value) for path in facts.paths)
+        folder = value.rstrip("/") + "/"
+        return any(fnmatch(path, value) or path.startswith(folder) for path in facts.paths)
     module, _, name = value.rpartition(".")
     if scope.kind == "symbol" and module and (module.lower(), name) in facts.imported:
         return True
