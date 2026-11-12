@@ -24,7 +24,7 @@ class IngestReport(NamedTuple):
     written: int = 0
     unchanged: int = 0
     scopes: int = 0  # AI-read scopes kept
-    dropped: int = 0  # AI-read scopes whose quote isn't in the source
+    dropped: int = 0  # AI-read scopes whose quote isn't in the source or whose value isn't code
     failed: int = 0  # sources the AI could not read; their decisions are still saved
 
 

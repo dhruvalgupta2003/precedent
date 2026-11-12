@@ -38,6 +38,8 @@ def test_keep_grounded_drops_made_up_quotes():
         ("package", "@backstage/core-*", False),  # a pattern, not a package
         ("symbol", "React.FC", True),
         ("symbol", "export default", True),
+        ("symbol", "toFormat", True),
+        ("symbol", "element", False),  # a plain word matches prose and variable names alike
         ("symbol", "string form of entity references as a single URL segment", False),  # a sentence
         ("symbol", "import { helperFunc } from '../../lib/UtilityX/helper';", False),  # a whole line
         ("path", "packages/catalog-client", True),
@@ -48,3 +50,18 @@ def test_an_ai_read_scope_must_look_like_code(kind, value, usable):
     scope = Scope.model_validate({"kind": kind, "value": value, "polarity": "avoid", "quote": "q", "extracted": True})
 
     assert keep_grounded([scope], "q") == ([scope] if usable else [])
+
+
+def test_an_exception_that_does_not_look_like_code_is_dropped_but_the_stance_kept():
+    scope = Scope.model_validate(
+        {
+            "kind": "symbol",
+            "value": "export default",
+            "polarity": "avoid",
+            "quote": "q",
+            "extracted": True,
+            "unless": ["React.lazy", "when it is absolutely necessary for the build"],
+        }
+    )
+
+    assert keep_grounded([scope], "q")[0].unless == ("React.lazy",)

@@ -24,10 +24,17 @@ def looks_like_code(scope: Scope) -> bool:
     if scope.kind == "package":
         return bool(PACKAGE.fullmatch(value))
     if scope.kind in ("symbol", "config"):
-        return len(value.split()) <= MAX_SYMBOL_WORDS and len(value) <= MAX_SYMBOL_CHARS and not value.endswith(";")
+        plain_word = value.isalpha() and value.islower()  # "element" matches prose and variable names alike
+        short = len(value.split()) <= MAX_SYMBOL_WORDS and len(value) <= MAX_SYMBOL_CHARS
+        return short and not plain_word and not value.endswith(";")
     return " " not in value
 
 
 def keep_grounded(scopes: list[Scope], source: str) -> list[Scope]:
-    """The scopes that pass both checks."""
-    return [s for s in scopes if s.quote and grounded(s.quote, source) and looks_like_code(s)]
+    """The scopes that pass both checks; exceptions that don't look like code are dropped from them."""
+    kept = [s for s in scopes if s.quote and grounded(s.quote, source) and looks_like_code(s)]
+    return [s.model_copy(update={"unless": tuple(u for u in s.unless if _symbol_like(u))}) for s in kept]
+
+
+def _symbol_like(code: str) -> bool:
+    return looks_like_code(Scope(kind="symbol", value=code))

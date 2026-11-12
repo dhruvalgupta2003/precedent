@@ -60,7 +60,7 @@ def check(facts: Facts, rules: Iterable[Rule]) -> Report:
     rules = list(rules)
     # Old guidance isn't dead while a live decision still prefers or requires the same thing.
     backed = {(r.scope.kind, r.scope.value) for r in rules if r.live and r.scope.polarity in ("prefer", "require")}
-    findings = tuple(f for rule in rules if matches(rule.scope, facts) and (f := _finding(rule, backed)))
+    findings = tuple(f for rule in rules if _applies(rule.scope, facts) and (f := _finding(rule, backed)))
     verdict: Verdict = "BLOCK" if any(f.blocks for f in findings) else "WARN" if findings else "CLEAR"
     return Report(verdict=verdict, findings=findings)
 
@@ -78,6 +78,12 @@ def matches(scope: Scope, facts: Facts) -> bool:
         return True
     in_paths = scope.kind != "symbol" and any(value in path.split("/") for path in facts.paths)
     return in_paths or bool(re.search(rf"(?<![\w.]){re.escape(value)}(?![\w])", facts.text))
+
+
+def _applies(scope: Scope, facts: Facts) -> bool:
+    """The scope matches and no exception the source names (e.g. React.lazy) appears in the same change."""
+    exceptions = (Scope(kind="symbol", value=code) for code in scope.unless)
+    return matches(scope, facts) and not any(matches(e, facts) for e in exceptions)
 
 
 def _finding(rule: Rule, backed: AbstractSet[tuple[str, str]]) -> Finding | None:

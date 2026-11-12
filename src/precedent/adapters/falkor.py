@@ -36,7 +36,7 @@ SET d += $props, d.hash = $hash
 FOREACH (s IN $scopes |
   MERGE (sc:Scope {kind: s.kind, value: s.value})
   MERGE (d)-[a:APPLIES_TO {polarity: s.polarity}]->(sc)
-  SET a.quote = s.quote, a.extracted = s.extracted, a.invalid_at = null)
+  SET a.quote = s.quote, a.extracted = s.extracted, a.unless = s.unless, a.invalid_at = null)
 FOREACH (old IN $supersedes |
   MERGE (o:Decision {id: old})
   MERGE (d)-[:SUPERSEDES]->(o))
@@ -87,7 +87,7 @@ WHERE a.invalid_at IS NULL
 OPTIONAL MATCH (newer:Decision)-[:SUPERSEDES]->(d)
 OPTIONAL MATCH (d)-[:CITES]->(doc:Source)
 RETURN d.id, d.title, d.status, d.tier, d.confirmed, d.needs_review, s.kind, s.value, a.polarity, a.quote,
-       a.extracted, collect(DISTINCT newer.id), collect(DISTINCT doc.url)
+       a.extracted, a.unless, collect(DISTINCT newer.id), collect(DISTINCT doc.url)
 """
 
 
@@ -97,8 +97,30 @@ def rules(graph: Graph) -> list[Rule]:
 
 
 def _rule(row: list) -> Rule:
-    decision, title, status, tier, confirmed, needs_review, kind, value, polarity, quote, extracted, newer, urls = row
-    scope = {"kind": kind, "value": value, "polarity": polarity, "quote": quote, "extracted": bool(extracted)}
+    (
+        decision,
+        title,
+        status,
+        tier,
+        confirmed,
+        needs_review,
+        kind,
+        value,
+        polarity,
+        quote,
+        extracted,
+        unless,
+        newer,
+        urls,
+    ) = row
+    scope = {
+        "kind": kind,
+        "value": value,
+        "polarity": polarity,
+        "quote": quote,
+        "extracted": bool(extracted),
+        "unless": unless or [],
+    }
     return Rule.model_validate(
         {
             "decision": decision,

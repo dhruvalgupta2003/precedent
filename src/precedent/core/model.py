@@ -27,6 +27,7 @@ class Scope(Frozen):
     polarity: Literal["applies", "prefer", "avoid", "require"] = "applies"
     quote: str | None = None  # the source's own words for this scope
     extracted: bool = False  # read by an LLM from prose: may WARN, never BLOCK (ADR0004)
+    unless: tuple[str, ...] = ()  # code the source names as an allowed exception, e.g. React.lazy
 
     @model_validator(mode="after")
     def _grounded(self) -> Self:
