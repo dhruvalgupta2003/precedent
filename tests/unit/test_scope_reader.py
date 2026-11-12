@@ -51,3 +51,12 @@ def test_a_model_error_becomes_an_extraction_error(tmp_path):
 
     with pytest.raises(ExtractionError):
         read("Any ADR.")
+
+
+def test_instruction_files_get_their_own_prompt_and_cache(tmp_path):
+    calls: list = []
+    with capture_run_messages() as messages:
+        scope_reader(model(calls), cache_dir=tmp_path, kind="instructions")("Use node-fetch.")
+
+    assert "<untrusted_document>" in str(messages[0])
+    assert "instruction file" in calls[0].instructions
