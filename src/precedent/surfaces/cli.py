@@ -31,13 +31,17 @@ def main(argv: list[str] | None = None) -> int:
     ingest = commands.add_parser("ingest", help="read a folder of ADRs into the org's graph")
     ingest.add_argument("folder", type=folder)
     ingest.add_argument("--org", type=org_name, required=True)
+    ingest.add_argument("--no-ai", action="store_true", help="skip AI-read scopes (status and links only)")
     args = parser.parse_args(argv)
 
     url = os.environ.get("FALKORDB_URL", "redis://localhost:6380")
     try:
-        written, unchanged = service.ingest(FalkorDB.from_url(url).select_graph(args.org), args.folder, args.org)
+        reader = None if args.no_ai else service.default_scope_reader()
+        report = service.ingest(FalkorDB.from_url(url).select_graph(args.org), args.folder, args.org, reader)
     except redis.ConnectionError as exc:
         print(f"No FalkorDB at {url}: {exc}. Start it with `docker compose up -d`.", file=sys.stderr)
         return 1
-    print(f"{args.org}: {written} written, {unchanged} unchanged")
+    print(f"{args.org}: {report.written} written, {report.unchanged} unchanged")
+    if reader:
+        print(f"AI read {report.scopes} scopes; dropped {report.dropped} without a real quote; {report.failed} failed")
     return 0
