@@ -124,7 +124,7 @@ class DecisionRecord(BaseModel):
 
 ### Rules
 - Scope kind `symbol` covers code identifiers (`React.FC`, `export default`); found while writing eval cases E03, P03, P04.
-- **Never delete.** A changed fact sets `invalid_at` on the old edge and creates a new one.
+- **Never delete.** A changed fact sets `invalid_at` on the old edge and creates a new one. Implemented for `APPLIES_TO` (keyed by polarity): stances a re-ingested source no longer states get `invalid_at`; reads skip them.
 - A decision is **current** iff `status = "accepted"` and no incoming valid `SUPERSEDES`.
 - A decision can **BLOCK** iff current **and** `confirmed` **and** `tier in {"structured","capture"}`.
 - Every `Decision` and every LLM-derived edge has ≥ 1 `CITES` with a `quote`.
@@ -196,7 +196,7 @@ Idempotent: re-running on unchanged input writes nothing (content hash per recor
    |---|---|
    | Diff adds package X; a current decision has `avoid X` | conflict |
    | Diff adds X; a **superseded** decision said `prefer`/`require` X | superseded + successor: following dead guidance (ADR0011). A superseded `avoid` X says nothing: the replacement may allow X |
-   | Diff touches path P; current decisions apply to P | info (list them) |
+   | Diff touches path P; a current decision **declares** `avoid` P | conflict. A folder stance read by the AI from prose never objects: "X will move" is about where new code goes, not a ban on edits |
    | Plan text ≈ an `Approach` with `REJECTED_IN` (cosine ≥ 0.80) | conflict (rejected before) |
 4. **Verdict**: BLOCK if any conflict from a decision that can BLOCK (§4 rules) **and whose scope was declared, not AI-extracted** (`extracted` on the edge); WARN if any conflict or superseded finding; else CLEAR. `proposed` decisions (e.g. pending captures) can WARN, never BLOCK. Implemented in `core/preflight.py`; all rules are loaded per org and matched in pure code.
 5. **Experts**: owners of touched path scopes, ranked by PageRank over `APPROVED|AUTHORED` (verify `algo.pageRank` signature).

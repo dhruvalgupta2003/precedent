@@ -54,7 +54,7 @@ class _Extraction(BaseModel):
 
 def scope_reader(model: str | Model, cache_dir: Path) -> Callable[[str], list[Scope]]:
     """A function ADR text → extracted scopes, cached by (prompt version, model, text)."""
-    agent = Agent(model, output_type=_Extraction, instructions=INSTRUCTIONS)
+    agent: Agent[None, _Extraction] = Agent(model, output_type=_Extraction, instructions=INSTRUCTIONS)
     name = model if isinstance(model, str) else model.model_name
 
     @traced("extract.scopes")

@@ -1,5 +1,7 @@
 """FalkorDB adapter: the only module that talks to the graph database (ADR0002, ADR0009)."""
 
+from datetime import UTC, datetime
+
 from falkordb import Graph
 
 from precedent.core.model import DecisionRecord, content_hash
@@ -33,13 +35,23 @@ WITH d WHERE d.hash IS NULL OR d.hash <> $hash
 SET d += $props, d.hash = $hash
 FOREACH (s IN $scopes |
   MERGE (sc:Scope {kind: s.kind, value: s.value})
-  MERGE (d)-[a:APPLIES_TO]->(sc) SET a.polarity = s.polarity, a.quote = s.quote, a.extracted = s.extracted)
+  MERGE (d)-[a:APPLIES_TO {polarity: s.polarity}]->(sc)
+  SET a.quote = s.quote, a.extracted = s.extracted, a.invalid_at = null)
 FOREACH (old IN $supersedes |
   MERGE (o:Decision {id: old})
   MERGE (d)-[:SUPERSEDES]->(o))
 FOREACH (src IN $sources |
   MERGE (doc:Source {url: src.url}) SET doc.kind = src.kind
   MERGE (d)-[:CITES {section: src.section, quote: src.quote}]->(doc))
+"""
+# Never delete (spec §4): a stance the source no longer states gets `invalid_at`; reads skip it, history stays.
+# A separate query on purpose: a pattern comprehension earlier in SAVE_DECISION made FalkorDB 6.0.4 create
+# only the first edge of a later FOREACH MERGE. It runs first, so a crash between the two queries never
+# leaves stale stances live behind a saved hash.
+RETIRE_STALE_STANCES = """
+MATCH (d:Decision {id: $id})-[a:APPLIES_TO]->(w:Scope)
+WHERE a.invalid_at IS NULL AND NOT w.kind + ':' + w.value + ':' + a.polarity IN $stances
+SET a.invalid_at = $now
 """
 DECISION_PROPS = {
     "title",
@@ -60,8 +72,10 @@ def save_decision(graph: Graph, record: DecisionRecord) -> bool:
     scopes = [s.model_dump() for s in record.scopes]
     # MERGE keys can't be null, so a missing section or quote is stored as "".
     sources = [s.model_dump() | {"section": s.section or "", "quote": s.quote or ""} for s in record.sources]
+    stances = [f"{s.kind}:{s.value}:{s.polarity}" for s in record.scopes]
+    graph.query(RETIRE_STALE_STANCES, {"id": record.id, "stances": stances, "now": datetime.now(UTC).isoformat()})
     params = {"id": record.id, "hash": content_hash(record), "props": props, "scopes": scopes}
-    result = graph.query(SAVE_DECISION, {**params, "supersedes": list(record.supersedes), "sources": sources})
+    result = graph.query(SAVE_DECISION, params | {"supersedes": list(record.supersedes), "sources": sources})
     return result.properties_set > 0
 
 
@@ -69,6 +83,7 @@ def save_decision(graph: Graph, record: DecisionRecord) -> bool:
 # One small graph per org, so pre-flight loads them all and matches in pure code (core/preflight.py).
 RULES = """
 MATCH (d:Decision)-[a:APPLIES_TO]->(s:Scope)
+WHERE a.invalid_at IS NULL
 OPTIONAL MATCH (newer:Decision)-[:SUPERSEDES]->(d)
 OPTIONAL MATCH (d)-[:CITES]->(doc:Source)
 RETURN d.id, d.title, d.status, d.tier, d.confirmed, d.needs_review, s.kind, s.value, a.polarity, a.quote,

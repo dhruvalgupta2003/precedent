@@ -5,6 +5,7 @@ Deterministic: the same facts and rules always give the same verdict. An LLM may
 
 import re
 from collections.abc import Iterable
+from collections.abc import Set as AbstractSet
 from fnmatch import fnmatch
 from typing import Literal
 
@@ -56,7 +57,10 @@ class Report(Frozen):
 
 
 def check(facts: Facts, rules: Iterable[Rule]) -> Report:
-    findings = tuple(f for rule in rules if matches(rule.scope, facts) and (f := _finding(rule)))
+    rules = list(rules)
+    # Old guidance isn't dead while a live decision still prefers or requires the same thing.
+    backed = {(r.scope.kind, r.scope.value) for r in rules if r.live and r.scope.polarity in ("prefer", "require")}
+    findings = tuple(f for rule in rules if matches(rule.scope, facts) and (f := _finding(rule, backed)))
     verdict: Verdict = "BLOCK" if any(f.blocks for f in findings) else "WARN" if findings else "CLEAR"
     return Report(verdict=verdict, findings=findings)
 
@@ -76,13 +80,19 @@ def matches(scope: Scope, facts: Facts) -> bool:
     return in_paths or bool(re.search(rf"(?<![\w.]){re.escape(value)}(?![\w])", facts.text))
 
 
-def _finding(rule: Rule) -> Finding | None:
-    """Live 'avoid' → conflict. Following a replaced 'prefer'/'require' → superseded (dead guidance)."""
+def _finding(rule: Rule, backed: AbstractSet[tuple[str, str]]) -> Finding | None:
+    """Live 'avoid' → conflict. Following a replaced 'prefer'/'require' → superseded (dead guidance).
+
+    A folder stance read by the AI from prose never objects: "X will move" or "put new code in Y" is about
+    where code goes, not a ban on editing what's there. Declared folder stances still can.
+    """
     scope = rule.scope
+    if scope.kind == "path" and scope.extracted:
+        return None
     if rule.live and scope.polarity == "avoid":
         message = f"{rule.decision} says avoid {scope.value}"
         return _found(rule, "conflict", message, blocks=rule.may_block)
-    if rule.superseded_by and scope.polarity in ("prefer", "require"):
+    if rule.superseded_by and scope.polarity in ("prefer", "require") and (scope.kind, scope.value) not in backed:
         successor = rule.superseded_by[0]
         message = f"{rule.decision} ({scope.polarity} {scope.value}) was replaced by {successor}"
         return _found(rule, "superseded", message, successor=successor)
