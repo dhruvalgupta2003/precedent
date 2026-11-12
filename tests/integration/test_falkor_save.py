@@ -51,11 +51,21 @@ def test_two_decisions_about_one_package_share_one_scope_node(graph):
 
 def test_saving_the_same_decision_twice_changes_nothing(graph):
     record = adr("014", scopes=[node_fetch("avoid")], supersedes=["backstage/ADR013"], sources=[cite(NATIVE)])
-    save_decision(graph, record)
+    assert save_decision(graph, record) is True
     before = rows(graph, "MATCH (n) OPTIONAL MATCH (n)-[r]->() RETURN count(DISTINCT n), count(r)")
-    save_decision(graph, record)
 
+    assert save_decision(graph, record) is False  # same content hash: nothing written
     assert rows(graph, "MATCH (n) OPTIONAL MATCH (n)-[r]->() RETURN count(DISTINCT n), count(r)") == before
+
+
+def test_hostile_text_is_stored_exactly_and_runs_nothing(graph):
+    """Safety X6: the client inlines parameters as query text, so escaping must hold."""
+    hostile = "x\" }) MATCH (n) DETACH DELETE n // it's \\ done"
+    save_decision(graph, adr("013"))
+    save_decision(graph, adr("014", title=hostile))
+
+    assert rows(graph, "MATCH (d:Decision {id: 'backstage/ADR014'}) RETURN d.title") == [[hostile]]
+    assert rows(graph, "MATCH (d:Decision) RETURN count(d)") == [[2]]
 
 
 def test_a_changed_title_updates_the_decision_instead_of_adding_one(graph):

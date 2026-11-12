@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 2
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -1701,6 +1701,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-ai-slim", extra = ["anthropic", "google", "openai"] },
     { name = "pyyaml" },
+    { name = "redis" },
     { name = "uvicorn" },
 ]
 
@@ -1732,6 +1733,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.14.3" },
     { name = "pydantic-ai-slim", extras = ["anthropic", "openai", "google"] },
     { name = "pyyaml" },
+    { name = "redis" },
     { name = "uvicorn" },
 ]
 

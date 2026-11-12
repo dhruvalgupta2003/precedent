@@ -7,6 +7,7 @@ license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = [
   "falkordb",
+  "redis",  # imported directly: its ConnectionError is not the builtin one
   "pydantic>=2.14.3",
   "pydantic-ai-slim[anthropic,openai,google]",
   "langfuse",
@@ -22,7 +23,7 @@ dependencies = [
 ]
 
 [project.scripts]
-precedent = "precedent.cli:main"
+precedent = "precedent.surfaces.cli:main"
 
 [dependency-groups]
 dev = [
@@ -113,7 +114,7 @@ forbidden_modules = ["falkordb", "pydantic_ai", "fastembed", "httpx", "fastapi",
 [tool.deptry.per_rule_ignores]
 # ponytail: runtime deps are declared ahead of the code that imports them (code starts Oct 15).
 # Remove each name from this list as soon as a module imports it.
-DEP002 = ["pydantic-ai-slim", "langfuse", "fastembed", "pyyaml", "httpx", "mcp", "fastapi", "uvicorn"]
+DEP002 = ["pydantic-ai-slim", "langfuse", "fastembed", "httpx", "mcp", "fastapi", "uvicorn"]
 
 [tool.codespell]
 skip = "uv.lock,*.lock,.git,.venv,.cache,data"
