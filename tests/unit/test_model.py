@@ -116,3 +116,8 @@ def test_any_status_text_is_either_known_or_flagged(raw):
 def test_content_hash_is_stable_and_changes_with_content():
     assert content_hash(record()) == content_hash(record())
     assert content_hash(record()) != content_hash(record(title="Use native fetch everywhere"))
+
+
+def test_a_scope_read_by_ai_without_a_quote_is_refused():
+    with pytest.raises(ValidationError, match="verbatim quote"):
+        Scope.model_validate({"kind": "package", "value": "node-fetch", "polarity": "avoid", "extracted": True})

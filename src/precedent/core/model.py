@@ -25,6 +25,14 @@ class Scope(Frozen):
     kind: Literal["path", "package", "symbol", "component", "feature_gate", "config"]
     value: str = Field(min_length=1)
     polarity: Literal["applies", "prefer", "avoid", "require"] = "applies"
+    quote: str | None = None  # the source's own words for this scope
+    extracted: bool = False  # read by an LLM from prose: may WARN, never BLOCK (ADR0004)
+
+    @model_validator(mode="after")
+    def _grounded(self) -> Self:
+        if self.extracted and not self.quote:
+            raise ValueError("an extracted scope needs a verbatim quote (grounding rule)")
+        return self
 
 
 class Alternative(Frozen):

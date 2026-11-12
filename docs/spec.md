@@ -111,7 +111,7 @@ class DecisionRecord(BaseModel):
 
 ### Edges — every edge has `valid_from`, `invalid_at` (null = valid), `source_url`
 ```
-(Decision)-[:APPLIES_TO {polarity}]->(Scope)
+(Decision)-[:APPLIES_TO {polarity, quote, extracted}]->(Scope)
 (Decision)-[:SUPERSEDES]->(Decision)
 (Approach)-[:REJECTED_IN {reason}]->(Decision)
 (Approach)-[:CHOSEN_IN]->(Decision)
@@ -195,10 +195,10 @@ Idempotent: re-running on unchanged input writes nothing (content hash per recor
    | Condition | Finding |
    |---|---|
    | Diff adds package X; a current decision has `avoid X` | conflict |
-   | Diff adds package X; X is `avoid`/`prefer` only in a **superseded** decision | info + successor ("ADR013 superseded by ADR014 → use native `fetch`") — WARN if successor `avoid`s X |
+   | Diff adds X; a **superseded** decision said `prefer`/`require` X | superseded + successor: following dead guidance (ADR0011). A superseded `avoid` X says nothing: the replacement may allow X |
    | Diff touches path P; current decisions apply to P | info (list them) |
    | Plan text ≈ an `Approach` with `REJECTED_IN` (cosine ≥ 0.80) | conflict (rejected before) |
-4. **Verdict**: BLOCK if any conflict from a decision that can BLOCK (§4 rules); WARN if any conflict/supersession otherwise; else CLEAR.
+4. **Verdict**: BLOCK if any conflict from a decision that can BLOCK (§4 rules) **and whose scope was declared, not AI-extracted** (`extracted` on the edge); WARN if any conflict or superseded finding; else CLEAR. `proposed` decisions (e.g. pending captures) can WARN, never BLOCK. Implemented in `core/preflight.py`; all rules are loaded per org and matched in pure code.
 5. **Experts**: owners of touched path scopes, ranked by PageRank over `APPROVED|AUTHORED` (verify `algo.pageRank` signature).
 6. **Explain** (optional LLM): one paragraph from the findings; never changes the verdict.
 
