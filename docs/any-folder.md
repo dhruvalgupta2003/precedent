@@ -35,7 +35,8 @@ below). With AI, it also finds decisions written as ordinary sentences.
 
 It skips what isn't yours or isn't a decision: folders your `.gitignore` ignores, `node_modules`, build output, hidden
 folders, and instruction files for AI assistants (`CLAUDE.md`, `AGENTS.md`), because an outdated line there must never
-become a decision. Examples inside code blocks are ignored too.
+become a decision. Examples inside code blocks are ignored too. A symbolic link is read only if its target is
+inside the folder you load, so nothing from elsewhere on your machine is ever stored or sent to an AI.
 
 ## Mark a decision in any document
 

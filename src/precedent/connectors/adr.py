@@ -47,13 +47,17 @@ class Parsed(NamedTuple):
     decided_at: date | None = None
 
 
-def records(folder: str, org: str, source: str | None = None) -> Iterator[DecisionRecord]:
+def records(folder: str, org: str, source: str | None = None, root: Path | None = None) -> Iterator[DecisionRecord]:
     """One record per real ADR in the folder; templates and other files are skipped.
 
-    `source` names the folder (e.g. "platform") so two folders that both start at ADR001 don't collide.
+    `source` names the folder (e.g. "platform") so two folders that both start at ADR001 don't collide. Only files
+    inside `root` (the loaded folder; the decision folder itself by default) are read: a symbolic link that leads
+    out is skipped.
     """
     prefix = f"{org}/{source}" if source else org
-    adrs = [_parse(path, adr_id) for path in sorted(Path(folder).glob("*.md")) if (adr_id := adr_id_of(path))]
+    limit = root or Path(folder)
+    paths = [path for path in sorted(Path(folder).glob("*.md")) if inside(path, limit)]
+    adrs = [_parse(path, adr_id) for path in paths if (adr_id := adr_id_of(path))]
     known = {a.id for a in adrs}
     declared = _knowledge(Path(folder) / KNOWLEDGE_FILE, {a.id for a in adrs})
     # A link can be stated by either side; the graph stores it once, on the newer ADR.
@@ -95,6 +99,12 @@ def one_file_per_id(found: Iterable[tuple[str, str]]) -> None:
             "; ".join(twice) + ": rename one, so each decision has its own id and links and precedent.yaml can say"
             " which one they mean"
         )
+
+
+def inside(path: Path, root: Path) -> bool:
+    """A real file whose target is inside the loaded folder. A symbolic link that leads out, or nowhere, is never
+    read: its text could be anything on this machine, and it would be stored as a quote or sent to the AI."""
+    return path.is_file() and path.resolve().is_relative_to(root.resolve())
 
 
 def adr_id_of(path: Path) -> str | None:

@@ -135,17 +135,19 @@ def test_two_folders_of_one_repository_loaded_separately_with_one_number_are_ref
 
 
 def test_a_symlinked_decision_file_cannot_take_an_id_from_another_folder(graph, tmp_path):
-    """Security review of PR #60: a link in another folder, pointing at the real file, took its id and its block."""
+    """Security review of PR #60: a link in another folder, pointing at the real file, took its id and its block.
+    Its target is outside the folder being loaded, so it isn't read at all (security review of PR #59)."""
     root = repo(tmp_path / "shop")
     decisions(root / "docs" / "adr", {"0007-avoid-axios.md": AVOID})
     service.ingest(graph, str(root / "docs" / "adr"), "team")
     other = root / "services" / "pay" / "adr"
     other.mkdir(parents=True)
     (other / "0007-x.md").symlink_to(root / "docs" / "adr" / "0007-avoid-axios.md")
+    (other / "0001-own.md").write_text(note(1))
 
-    with pytest.raises(KnowledgeError, match="already loaded from"):
-        service.ingest(graph, str(other), "team")
+    report = service.ingest(graph, str(other), "team")
 
+    assert report.written + report.unchanged == 1  # its own decision only, never the link
     assert verdict(graph) == "BLOCK"
 
 
