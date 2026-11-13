@@ -103,7 +103,7 @@ def from_scopes(doc: Path, root: Path, prefix: str, scopes: list[Scope]) -> list
     """Decisions an AI read in a document (ADR0014): one per quote, with the stances it states. The scopes must
     already be grounded in `body(doc)`; like every found decision, these are proposed and may only warn."""
     by_quote: dict[str, list[Scope]] = {}
-    for scope in scopes:
+    for scope in (s for s in scopes if s.polarity != "applies"):  # about something isn't a decision on it
         by_quote.setdefault(" ".join((scope.quote or "").split()), []).append(scope)
     records = (
         _record(quote, doc, f"{prefix}/{_name(doc, root)}", prefix).model_copy(update={"scopes": tuple(found)})

@@ -281,3 +281,16 @@ def test_a_very_large_file_is_checked_as_if_new(tmp_path, monkeypatch):
 
     assert main(["check", "--org", "backstage"]) == 0
     assert seen[0].context == ()
+
+
+def test_with_claude_and_no_ai_cannot_both_be_given(tmp_path):
+    with pytest.raises(SystemExit) as exited:
+        main(["load", str(tmp_path), "--with", "claude", "--no-ai"])
+    assert exited.value.code == 2
+
+
+def test_with_claude_but_no_claude_code_installed_exits_1_and_says_why(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    assert main(["load", str(tmp_path), "--with", "claude"]) == 1
+    assert "Claude Code" in capsys.readouterr().err

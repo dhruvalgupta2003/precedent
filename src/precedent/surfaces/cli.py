@@ -20,6 +20,7 @@ from precedent.surfaces.hook import change_from_tool, describe, response
 EXIT = {"CLEAR": 0, "WARN": 1, "BLOCK": 2}  # spec §9: CI-friendly
 HOOK_TOOLS = "Edit|Write|MultiEdit"
 GIT = partial(subprocess.run, capture_output=True, text=True, check=False)
+CLAUDE_CODE_MODEL = "claude-code:haiku"  # fast and cheap; set PRECEDENT_MODEL_EXTRACT=claude-code:sonnet for more
 
 
 def org_name(value: str) -> str:
@@ -48,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def run_ingest(args: argparse.Namespace) -> int:
-    ai = service.Readers() if args.no_ai else service.readers()
+    ai = service.Readers() if args.no_ai else service.readers(_model(args))
     prefix = f"{args.org}/{args.source}" if args.source else args.org
     report = service.ingest(_graph(args.org), args.folder, prefix, ai)
     total = report.written + report.unchanged
@@ -58,8 +59,9 @@ def run_ingest(args: argparse.Namespace) -> int:
         found = f"Found {report.found} more in other documents"
         print(f"{found}. They are proposed: they can warn, but not stop a change, until someone accepts them.")
     if ai.adrs or ai.docs:
-        skipped = f"skipped {report.dropped} it couldn't quote word for word"
-        print(f"The AI found {report.scopes} things to look for; {skipped}; {report.failed} files failed.")
+        found, failed = _count(report.scopes, "thing"), _count(report.failed, "file")
+        skipped = f"skipped {report.dropped} not quoted word for word or not naming code"
+        print(f"The AI found {found} to look for; {skipped}; {failed} failed.")
     return 0
 
 
@@ -116,7 +118,7 @@ def run_hooks_install(args: argparse.Namespace) -> int:
 
 def run_doctor(args: argparse.Namespace) -> int:
     """Instruction-file lines (CLAUDE.md, AGENTS.md, …) that contradict a live decision. Exit 1 if any (CI)."""
-    reader = None if args.no_ai else service.default_scope_reader("instructions")
+    reader = None if args.no_ai else service.default_scope_reader("instructions", _model(args))
     files, found = service.doctor(_graph(args.org), args.project, reader)
     for stale in found:
         print(f'{stale.message}\n    the file says: "{" ".join(stale.quote.split())}"')
@@ -125,6 +127,15 @@ def run_doctor(args: argparse.Namespace) -> int:
     if not found:
         print(f"No stale lines in {len(files)} instruction file{'s' if len(files) != 1 else ''}.")
     return 1 if found else 0
+
+
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}{'' if n == 1 else 's'}"
+
+
+def _model(args: argparse.Namespace) -> str | None:
+    """`--with claude` reads with your own Claude Code (ADR0017); otherwise PRECEDENT_MODEL_EXTRACT, if set."""
+    return CLAUDE_CODE_MODEL if args.with_ == "claude" else None
 
 
 def _at(source: str | None) -> str:
@@ -154,7 +165,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     ingest.add_argument("folder", type=folder)
     _org_option(ingest)
-    ingest.add_argument("--no-ai", action="store_true", help="skip AI-read scopes (status and links only)")
+    _ai_options(ingest, "skip AI-read scopes (status and links only)")
     ingest.add_argument("--source", type=org_name, help="name this folder (e.g. platform) so ids don't collide")
     ingest.set_defaults(run=run_ingest)
     check = commands.add_parser("check", help="check a diff, or with --hook a Claude Code edit, against decisions")
@@ -168,7 +179,7 @@ def _parser() -> argparse.ArgumentParser:
     doctor = commands.add_parser("doctor", help="find lines in CLAUDE.md/AGENTS.md that contradict live decisions")
     _org_option(doctor)
     doctor.add_argument("--project", default=".", help="the repository to check (default: here)")
-    doctor.add_argument("--no-ai", action="store_true", help="only flag lines that mention what a decision avoids")
+    _ai_options(doctor, "only flag lines that mention what a decision avoids")
     doctor.set_defaults(run=run_doctor)
     hooks = commands.add_parser("hooks", help="manage the Claude Code hook").add_subparsers(
         dest="action", required=True
@@ -180,6 +191,14 @@ def _parser() -> argparse.ArgumentParser:
     where.add_argument("--user", action="store_true", help="guard every repo you open (~/.claude/settings.json)")
     install.set_defaults(run=run_hooks_install)
     return parser
+
+
+def _ai_options(command: argparse.ArgumentParser, no_ai: str) -> None:
+    which = command.add_mutually_exclusive_group()
+    which.add_argument("--no-ai", action="store_true", help=no_ai)
+    which.add_argument(
+        "--with", dest="with_", choices=["claude"], help="read with your own Claude Code instead of a model key"
+    )
 
 
 def _org_option(command: argparse.ArgumentParser) -> None:
