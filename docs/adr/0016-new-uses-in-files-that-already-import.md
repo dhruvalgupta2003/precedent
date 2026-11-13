@@ -13,7 +13,10 @@ import, and new code quietly grows on it.
 ## Decision
 1. A change carries each file as it is on disk (`Change.context`). The surfaces read it: the hook reads the file being
    edited, and `check` reads each changed file. They read only inside the project folder (the hook's `cwd`, or the
-   git repository), because a diff's paths could point anywhere. A missing or unreadable file adds nothing.
+   git repository), because a diff's paths could point anywhere. A file that is missing, unreadable, over 1 MB
+   (generated or minified), or a path the system rejects, adds nothing, and never crashes the check: a crash exits 1
+   like a WARN and would hide a BLOCK elsewhere in the diff. Import lines over 2,000 characters are skipped, because
+   a crafted one made the import patterns slow.
 2. From the file's imports, `core.diff.bindings` learns which names belong to which library: default, namespace and
    renamed imports, `const x = require(…)`, and Python's `import x as y` and `from x import y`.
 3. A name counts as a new use only if the added lines use it more often than the removed lines do, outside strings

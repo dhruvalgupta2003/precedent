@@ -25,6 +25,8 @@ NOT_CODE = re.compile(r"""//[^\n]*|/\*.*?\*/|#[^\n]*|'(?:\\.|[^'\\\n])*'|"(?:\\.
 EXPORT_AS_DEFAULT = re.compile(r"export\s*\{\s*(\w+)\s+as\s+default\s*\}")  # same thing as `export default X`
 NOT_PACKAGES = {"name", "version", "node", "npm", "yarn", "pnpm"}
 DOCS = (".md", ".mdx", ".rst", ".adoc", ".txt")  # code examples in docs are not code
+MAX_IMPORT_LINE = 2000  # no real import is longer; a crafted one could make the patterns below slow
+NAME = re.compile(r"(?<![\w$.])[A-Za-z_$][\w$]*")  # a name in code, not a property (`x.moment`)
 
 
 class Change(NamedTuple):
@@ -85,7 +87,9 @@ def bindings(lines: tuple[str, ...]) -> dict[str, str]:
 
 
 def _bound(line: str) -> list[tuple[str, str]]:
-    if m := JS_IMPORT.match(line):
+    if len(line) > MAX_IMPORT_LINE:
+        return []
+    if m := _js_import(line):
         return [(name, m["module"]) for name in _js_names(m["names"] or "")]
     if m := JS_REQUIRE.match(line):
         return [(m[1], m[2])]
@@ -116,20 +120,20 @@ def _new_uses(change: Change) -> set[str]:
     names = bindings(change.context)
     if not names:
         return set()
-    added, removed = (NOT_CODE.sub(" ", "\n".join(_not_imports(lines))) for lines in (change.added, change.removed))
-    return {
-        package
-        for name, package in names.items()
-        if len(re.findall(_use(name), added)) > len(re.findall(_use(name), removed))
-    }
+    added, removed = (
+        Counter(NAME.findall(NOT_CODE.sub(" ", "\n".join(_not_imports(lines)))))
+        for lines in (change.added, change.removed)
+    )
+    return {package for name, package in names.items() if added[name] > removed[name]}
 
 
 def _not_imports(lines: tuple[str, ...]) -> list[str]:
-    return [line for line in lines if not _bound(line) and not JS_IMPORT.match(line)]
+    return [line for line in lines if not _bound(line) and not _js_import(line)]
 
 
-def _use(name: str) -> str:
-    return rf"(?<![\w$.]){re.escape(name)}(?![\w$])"
+def _js_import(line: str) -> re.Match[str] | None:
+    """JS_IMPORT is slow on a crafted line (`import a` and 50,000 spaces took 3 s); no real import is that long."""
+    return JS_IMPORT.match(line) if len(line) <= MAX_IMPORT_LINE else None
 
 
 def _net_new(change_list: list[Change]) -> list[Change]:
@@ -166,7 +170,7 @@ def _manifest_pattern(path: str) -> re.Pattern[str] | None:
 
 def _imports(line: str, imported: set[tuple[str, str]], aliases: dict[str, str]) -> set[str]:
     """Packages this line imports or re-exports; named imports and aliases are recorded too."""
-    if m := JS_IMPORT.match(line):
+    if m := _js_import(line):
         _record_js_names(m["names"] or "", m["module"].lower(), imported, aliases)
         return _package({m["module"]})
     if m := PY_FROM.match(line):

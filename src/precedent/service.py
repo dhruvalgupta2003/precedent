@@ -88,13 +88,20 @@ def with_files(changes: list[Change], root: Path) -> list[Change]:
     return [change._replace(context=_lines(root, change.path)) for change in changes]
 
 
+MAX_FILE_BYTES = 1_000_000  # bigger files are generated or minified, and the hook runs on every edit
+
+
 def _lines(root: Path, path: str) -> tuple[str, ...]:
-    file = (root / path).resolve()
-    if not file.is_relative_to(root.resolve()) or not file.is_file():
-        return ()
+    """The file's lines, or none if it is outside `root`, missing, too big, or can't be opened. Then the change is
+    checked as if the file were new: a path the system rejects (a null byte, a name too long) must not crash the
+    check, because a crash exits 1 like a WARN and would hide a BLOCK elsewhere in the diff."""
     try:
+        file = (root / path).resolve()
+        inside = file.is_relative_to(root.resolve()) and file.is_file()
+        if not inside or file.stat().st_size > MAX_FILE_BYTES:
+            return ()
         return tuple(file.read_text(errors="replace").splitlines())
-    except OSError:  # unreadable: check the change without it, as if the file were new
+    except (OSError, ValueError):
         return ()
 
 

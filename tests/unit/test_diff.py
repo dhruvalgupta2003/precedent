@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from precedent.core.diff import Change, changes, facts
@@ -148,3 +150,24 @@ def test_a_package_imported_in_the_same_change_is_an_import_not_a_new_use():
 
 def test_a_new_use_in_a_docs_file_is_not_code():
     assert facts([Change("README.md", ("moment();",), (), MOMENT_FILE)]).used == set()
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["import " + "{" * 50_000 + " from 'a'", "import a" + " " * 50_000 + "x", "const x = 1;" + " " * 50_000],
+    ids=["many braces", "many spaces", "long code line"],
+)
+def test_a_crafted_long_line_is_read_quickly(line):
+    started = time.monotonic()
+    facts([Change("src/a.ts", (line,), (), (line, *MOMENT_FILE))])
+
+    assert time.monotonic() - started < 0.5
+
+
+def test_a_file_with_thousands_of_imports_is_read_quickly():
+    imports = tuple(f"import n{i} from 'p{i}';" for i in range(20_000))
+    started = time.monotonic()
+    found = facts([Change("src/a.ts", tuple(f"n{i}();" for i in range(20_000)), (), imports)])
+
+    assert time.monotonic() - started < 2
+    assert len(found.used) == 20_000
