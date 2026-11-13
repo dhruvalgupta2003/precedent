@@ -53,14 +53,17 @@ def repo_name(url: str) -> str | None:
     path = match["path"].strip("/").removesuffix(".git").strip("/").lower()
     if not path or any(c in path for c in "@:"):
         return None
-    return _azure(f"{match['host'].lower()}/{path}")
+    return "/".join(_azure(match["host"].lower(), path))
 
 
-def _azure(name: str) -> str:
-    """Azure DevOps writes one repository two ways: ssh.dev.azure.com/v3/org/project/repo over ssh, and
-    dev.azure.com/org/project/_git/repo over https. Both become dev.azure.com/org/project/repo."""
-    name = name.replace("ssh.dev.azure.com/v3/", "dev.azure.com/", 1) if name.startswith("ssh.dev.azure.com/") else name
-    return name.replace("/_git/", "/", 1) if name.startswith("dev.azure.com/") else name
+def _azure(host: str, path: str) -> tuple[str, str]:
+    """Azure DevOps writes one repository two ways: ssh.dev.azure.com, path v3/org/project/repo, over ssh, and
+    dev.azure.com, path org/project/_git/repo, over https. Both become dev.azure.com, org/project/repo."""
+    if host == "ssh.dev.azure.com" and path.startswith("v3/"):
+        host, path = "dev.azure.com", path.removeprefix("v3/")
+    if host == "dev.azure.com":
+        path = path.replace("/_git/", "/", 1)
+    return host, path
 
 
 def covers(reach: Reach, origin: Origin | None) -> bool:
