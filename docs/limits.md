@@ -15,13 +15,13 @@ It reports, it doesn't gate: a miss there is information. Run `make eval` to see
 | Equivalent syntax | `export { X as default }` reads as `export default X` |
 | Stated exceptions | a default export with `React.lazy` in the same change (ADR003's own exception) |
 | Not usage | comments, strings, removals, documentation code examples, a line moved within the change |
+| Forks, add-ons and other names, once listed in `precedent.yaml` | `node-fetch-native`, `moment-timezone`, `React.FunctionComponent` ([ADR0013](adr/0013-reviewed-knowledge-in-precedent-yaml.md)) |
 
 ## Can't yet (and why)
 
 | Case | Why plain code can't see it | What would fix it |
 |---|---|---|
-| A fork or sibling of an avoided package (`node-fetch-native`, `moment-timezone`) | Knowing two packages are the same family is knowledge, not syntax | A reviewed list of package families per decision, or an AI-proposed "also avoid" that a human confirms |
-| Another name for the same symbol (`React.FunctionComponent` for `React.FC`) | The ADR names only the short form | Aliases per symbol, proposed by AI and confirmed |
+| A fork, add-on or other name that nobody listed yet | Knowing two names are the same thing is knowledge, not syntax | List it in `precedent.yaml`; later, `precedent propose` drafts entries for review |
 | A computed import (`import(lib)`) | The name exists only at run time | Out of scope for a static check |
 | A decision with a condition ("cross-fetch only in isomorphic packages") | Conditions aren't modelled yet | Scopes with a condition (path or package type) |
 | An exception that lives in another file (`lazy()` in a file the change doesn't touch) | The check sees one change at a time | Repo-wide context in the hook (it knows the project folder) |

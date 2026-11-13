@@ -12,6 +12,7 @@ from falkordb import FalkorDB, Graph
 
 from precedent import service
 from precedent.core.diff import changes
+from precedent.core.errors import PrecedentError
 from precedent.surfaces.hook import change_from_tool, describe, response
 
 EXIT = {"CLEAR": 0, "WARN": 1, "BLOCK": 2}  # spec §9: CI-friendly
@@ -37,6 +38,9 @@ def main(argv: list[str] | None = None) -> int:
         return args.run(args)
     except redis.ConnectionError as exc:
         print(f"No FalkorDB at {_url()}: {exc}. Start it with `docker compose up -d`.", file=sys.stderr)
+        return 1
+    except PrecedentError as exc:
+        print(exc, file=sys.stderr)
         return 1
 
 

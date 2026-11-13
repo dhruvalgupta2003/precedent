@@ -11,8 +11,11 @@ from pathlib import Path
 from typing import NamedTuple
 
 import yaml
+from pydantic import ValidationError
 
-from precedent.core.model import DecisionRecord, SourceRef, Status, normalise_status
+from precedent.core.errors import KnowledgeError
+from precedent.core.grounding import looks_like_code
+from precedent.core.model import DecisionRecord, Scope, SourceRef, Status, normalise_status
 
 ADR_FILE = re.compile(r"(?:adr)?(\d{3,4})-[\w.-]+\.md")
 COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -20,6 +23,8 @@ NOTE = re.compile(r":::note\[Superseded\](.*?):::", re.DOTALL | re.IGNORECASE)
 STATUS_SECTION = re.compile(r"^##\s+Status\s*$(.*?)(?=^#|\Z)", re.MULTILINE | re.DOTALL | re.IGNORECASE)
 HEADING = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 DECISION_SECTION = re.compile(r"^##\s+Decision\s*$(.*?)(?=^#|\Z)", re.MULTILINE | re.DOTALL | re.IGNORECASE)
+KNOWLEDGE_FILE = "precedent.yaml"
+FIELDS = {"kind", "value", "polarity", "why"}
 LINK = re.compile(r"\]\((?:\./)?(?:adr)?(\d{3,4})-[^)]*\.md\)")
 REF = re.compile(r"(?:ADR-?)?(\d{3,4})", re.IGNORECASE)
 
@@ -47,6 +52,7 @@ def records(folder: str, org: str, source: str | None = None) -> Iterator[Decisi
         if (match := ADR_FILE.fullmatch(path.name)) and "template" not in path.name
     ]
     known = {a.id for a in adrs}
+    declared = _knowledge(Path(folder) / KNOWLEDGE_FILE, {a.id for a in adrs})
     # A link can be stated by either side; the graph stores it once, on the newer ADR.
     replaces = {a.id: list(a.supersedes) for a in adrs}
     for a in adrs:
@@ -64,8 +70,67 @@ def records(folder: str, org: str, source: str | None = None) -> Iterator[Decisi
             confirmed=True,
             supersedes=tuple(f"{prefix}/{i}" for i in dict.fromkeys(replaces[a.id]) if i in known),
             unresolved=tuple(i for i in dict.fromkeys(a.supersedes + a.successors) if i not in known),
+            scopes=tuple(declared.get(a.id, ())),
             sources=(SourceRef(url=str(a.path), kind="adr"),),
         )
+
+
+def _knowledge(path: Path, known: set[str]) -> dict[str, list[Scope]]:
+    """Reviewed knowledge (ADR0013): stances people declare per ADR in precedent.yaml, reviewed in PRs.
+
+    Declared scopes come from a structured source, so a confirmed, accepted decision may block on them.
+    """
+    if not path.exists():
+        return {}
+    found: dict[str, list[Scope]] = {}
+    for adr_id, entries in _load(path).items():
+        if adr_id not in known:
+            raise KnowledgeError(f"{KNOWLEDGE_FILE}: no ADR {adr_id!r} in this folder")
+        if not isinstance(entries, list):
+            raise KnowledgeError(f"{KNOWLEDGE_FILE}: {adr_id}: expected a list of entries")
+        found[adr_id] = [_declared(adr_id, entry) for entry in entries]
+    return found
+
+
+class _StrictLoader(yaml.SafeLoader):
+    """Safe YAML where a key written twice is an error: a second ADR014 block would silently erase the first."""
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict:
+        seen: set[str] = set()
+        for key, _ in node.value:
+            if str(key.value) in seen:
+                raise yaml.MarkedYAMLError(problem=f"{key.value} is written twice", problem_mark=key.start_mark)
+            seen.add(str(key.value))
+        return super().construct_mapping(node, deep)
+
+
+def _load(path: Path) -> dict:
+    if path.is_symlink():  # an error message must never echo lines of a file outside the repo
+        raise KnowledgeError(f"{KNOWLEDGE_FILE} must be a regular file, not a link")
+    try:
+        data = yaml.load(path.read_text(), Loader=_StrictLoader) or {}  # noqa: S506 (a SafeLoader)
+    except yaml.YAMLError as exc:
+        raise KnowledgeError(f"{KNOWLEDGE_FILE}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise KnowledgeError(f"{KNOWLEDGE_FILE}: expected ADR ids at the top level")
+    return data
+
+
+def _declared(adr_id: str, entry: object) -> Scope:
+    """One reviewed entry, in exactly the documented shape: extra keys like `unless` could switch a rule off."""
+    where = f"{KNOWLEDGE_FILE}: {adr_id}: {entry}"
+    if not isinstance(entry, dict) or set(entry) != FIELDS or not entry["why"]:
+        raise KnowledgeError(f"{where}: each entry needs exactly kind, value, polarity and why")
+    try:
+        # The reason is the reviewer's words, not the ADR's: say so wherever it is quoted.
+        why = f"{entry['why']} ({KNOWLEDGE_FILE})"
+        scope = Scope(kind=entry["kind"], value=entry["value"], polarity=entry["polarity"], quote=why)
+    except ValidationError as exc:
+        error = exc.errors()[0]
+        raise KnowledgeError(f"{where}: {'.'.join(map(str, error['loc']))}: {error['msg']}") from exc
+    if not looks_like_code(scope):
+        raise KnowledgeError(f"{where}: {scope.value!r} doesn't look like a {scope.kind}")
+    return scope
 
 
 def text(path: Path) -> str:

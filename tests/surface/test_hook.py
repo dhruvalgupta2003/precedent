@@ -89,6 +89,11 @@ def test_each_finding_is_one_line_even_when_the_quote_wraps():
     assert text.splitlines()[1].endswith('"move away from node-fetch" (docs/adr014.md)')
 
 
+def test_a_clear_result_says_nothing_matched():
+    text = describe(Report(verdict="CLEAR", findings=()))
+    assert text == "Precedent CLEAR: no current decision is against this change."
+
+
 def test_a_warning_tells_the_agent_which_source_wins_and_what_to_do():
     """E1: an informational warning lost to CLAUDE.md 4 times in 5. Agents weigh authority, so say it plainly."""
     replaced = Finding(

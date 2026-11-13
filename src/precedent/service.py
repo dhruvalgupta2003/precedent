@@ -101,4 +101,6 @@ def _with_scopes(record: DecisionRecord, read_scopes: ScopeReader, counts: Count
     kept = keep_grounded(found, text)
     counts["scopes"] += len(kept)
     counts["dropped"] += len(found) - len(kept)
-    return record.model_copy(update={"scopes": tuple(kept)})
+    declared = {(s.kind, s.value, s.polarity) for s in record.scopes}  # reviewed knowledge wins (ADR0013)
+    extra = tuple(s for s in kept if (s.kind, s.value, s.polarity) not in declared)
+    return record.model_copy(update={"scopes": record.scopes + extra})

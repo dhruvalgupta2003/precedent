@@ -1,6 +1,10 @@
+import re
 from pathlib import Path
 
+import pytest
+
 from precedent.connectors import adr
+from precedent.core.errors import KnowledgeError
 
 ADR013 = """---
 id: adrs-adr013
@@ -183,3 +187,64 @@ def test_a_source_name_keeps_two_adr_folders_from_colliding(tmp_path):
 
     assert ids == ["acme/platform/ADR013", "acme/platform/ADR014", "acme/web/ADR013", "acme/web/ADR014"]
     assert platform14.supersedes == ("acme/platform/ADR013",)  # links stay inside their source
+
+
+KNOWLEDGE = """
+ADR014:
+  - {kind: package, value: node-fetch-native, polarity: avoid, why: "a fork of node-fetch"}
+"""
+
+
+def test_reviewed_knowledge_in_precedent_yaml_becomes_declared_scopes(tmp_path):
+    records = by_id(tmp_path, {"adr014-use-fetch.md": ADR014, "precedent.yaml": KNOWLEDGE})
+
+    [scope] = records["backstage/ADR014"].scopes
+    assert (scope.value, scope.polarity, scope.extracted) == ("node-fetch-native", "avoid", False)  # declared
+    assert scope.quote == "a fork of node-fetch (precedent.yaml)"  # the reviewer's words, never passed off as the ADR's
+
+
+@pytest.mark.parametrize(
+    ("entry", "says"),
+    [
+        ('ADR014: [{kind: package, value: "Node Fetch", polarity: avoid, why: x}]', "doesn't look like a package"),
+        ("ADR014: [{kind: package, value: got, polarity: forbid, why: x}]", "polarity"),
+        ("ADR014: [{kind: package, value: got, polarity: avoid}]", "exactly kind, value, polarity and why"),
+        ("ADR014: [{kind: symbol, value: X.y, polarity: avoid, why: x, unless: [import]}]", "exactly kind, value"),
+        ("ADR014: {kind: package, value: got, polarity: avoid, why: x}", "ADR014: expected a list"),
+        ("ADR41: [{kind: package, value: got, polarity: avoid, why: x}]", "no ADR 'ADR41'"),
+        ("ADR014: [{kind: package, value: a, polarity: avoid, why: x}]\nADR014: []", "written twice"),
+        ("- ADR014", "expected ADR ids at the top level"),
+        ("ADR014: [", "precedent.yaml: "),
+    ],
+    ids=[
+        "not-code-shaped",
+        "unknown-polarity",
+        "no-why",
+        "a-key-that-could-switch-the-rule-off",
+        "not-a-list",
+        "typo-in-adr-id",
+        "a-second-block-would-erase-the-first",
+        "top-level-list",
+        "broken-yaml",
+    ],
+)
+def test_a_bad_knowledge_entry_stops_ingest_and_says_where(tmp_path, entry, says):
+    with pytest.raises(KnowledgeError, match=re.escape(says)):
+        by_id(tmp_path, {"adr014-use-fetch.md": ADR014, "precedent.yaml": entry})
+
+
+def test_a_knowledge_file_with_only_comments_adds_nothing(tmp_path):
+    records = by_id(tmp_path, {"adr014-use-fetch.md": ADR014, "precedent.yaml": "# nothing reviewed yet\n"})
+
+    assert records["backstage/ADR014"].scopes == ()
+
+
+def test_a_linked_knowledge_file_is_refused_so_errors_cant_echo_another_file(tmp_path):
+    (tmp_path / "secret.txt").write_text("token: [")
+    adrs = tmp_path / "adrs"
+    adrs.mkdir()
+    (adrs / "adr014-use-fetch.md").write_text(ADR014)
+    (adrs / "precedent.yaml").symlink_to(tmp_path / "secret.txt")
+
+    with pytest.raises(KnowledgeError, match="not a link"):
+        list(adr.records(str(adrs), "backstage"))
