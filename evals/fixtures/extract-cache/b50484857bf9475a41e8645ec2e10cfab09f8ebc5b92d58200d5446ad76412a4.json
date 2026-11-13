@@ -1,0 +1,1 @@
+[{"kind": "package", "value": "luxon", "polarity": "prefer", "quote": "We chose Luxon over Moment for dates, because Moment is in maintenance mode.", "unless": []}, {"kind": "package", "value": "moment", "polarity": "avoid", "quote": "We chose Luxon over Moment for dates, because Moment is in maintenance mode.", "unless": []}]

@@ -1,0 +1,1 @@
+[{"kind": "package", "value": "axios", "polarity": "avoid", "quote": "After the outage in March we stopped using axios.", "unless": []}, {"kind": "symbol", "value": "fetch", "polarity": "require", "quote": "All HTTP calls go through the built-in fetch now.", "unless": []}]

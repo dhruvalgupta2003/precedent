@@ -59,8 +59,9 @@ def run_ingest(args: argparse.Namespace) -> int:
         found = f"Found {report.found} more in other documents"
         print(f"{found}. They are proposed: they can warn, but not stop a change, until someone accepts them.")
     if ai.adrs or ai.docs:
-        skipped = f"skipped {report.dropped} it couldn't quote word for word"
-        print(f"The AI found {report.scopes} things to look for; {skipped}; {report.failed} files failed.")
+        found, failed = _count(report.scopes, "thing"), _count(report.failed, "file")
+        skipped = f"skipped {report.dropped} not quoted word for word or not naming code"
+        print(f"The AI found {found} to look for; {skipped}; {failed} failed.")
     return 0
 
 
@@ -126,6 +127,10 @@ def run_doctor(args: argparse.Namespace) -> int:
     if not found:
         print(f"No stale lines in {len(files)} instruction file{'s' if len(files) != 1 else ''}.")
     return 1 if found else 0
+
+
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}{'' if n == 1 else 's'}"
 
 
 def _model(args: argparse.Namespace) -> str | None:

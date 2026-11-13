@@ -1,0 +1,1 @@
+[{"kind": "symbol", "value": "export default", "polarity": "avoid", "quote": "We don't use default exports, except for React.lazy pages.", "unless": ["React.lazy"]}]

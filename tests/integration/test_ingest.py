@@ -225,3 +225,13 @@ def test_a_dead_ai_still_loads_the_marked_decisions_in_documents(graph, tmp_path
     report = service.ingest(graph, root, "team", service.Readers(docs=down))
 
     assert (report.found, report.failed) == (1, 1)
+
+
+def test_a_document_that_only_describes_the_code_has_no_decisions(graph, tmp_path):
+    """A real model answered "applies" for "The API server uses Express": about Express, but not a decision."""
+    root = write(tmp_path, {"docs/architecture.md": "The API server uses Express.\n"})
+    about = Scope(
+        kind="package", value="express", polarity="applies", quote="The API server uses Express.", extracted=True
+    )
+
+    assert service.ingest(graph, root, "team", docs_ai(about)).found == 0

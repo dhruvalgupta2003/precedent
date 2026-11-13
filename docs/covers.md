@@ -68,7 +68,7 @@ precedent load docs/adr
 
 ```text
 Loaded 12 decisions into 'team': 3 new or changed, 9 already up to date.
-The AI found 14 things to look for; skipped 1 it couldn't quote word for word; 0 files failed.
+The AI found 14 things to look for; skipped 1 not quoted word for word or not naming code; 0 files failed.
 ```
 
 </div>

@@ -1,0 +1,1 @@
+[{"kind": "package", "value": "httpx", "polarity": "prefer", "quote": "new services use httpx", "unless": []}, {"kind": "package", "value": "requests", "polarity": "avoid", "quote": "requests is no longer allowed in async code", "unless": []}]
