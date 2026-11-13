@@ -101,7 +101,7 @@ class DecisionRecord(BaseModel):
 ### Nodes
 | Label | Key | Properties |
 |---|---|---|
-| `Decision` | `id` | title, statement, status, tier, confirmed, confidence, decided_at, rationale, embedding (vecf32 384) |
+| `Decision` | `id` | title, statement, status, tier, confirmed, confidence, decided_at, rationale, repo and path (where its file was loaded from, ADR0021), embedding (vecf32 384) |
 | `Scope` | `kind`+`value` | kind, value |
 | `Approach` | `id` (hash of normalised summary) | summary, embedding |
 | `Person` | `handle` | name |

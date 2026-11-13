@@ -42,6 +42,12 @@ Click a problem to see the fix.
     links and `precedent.yaml` entries with it, then run `precedent load` again. Until then, checks use the last
     load that worked. [Why](setup.md#2-write-a-decision).
 
+??? failure "It says `… is already loaded from …`"
+
+    Another repository, or another folder of this one loaded on its own, already gave a decision the same id. Load
+    each repository with its own `--source` name (for example `precedent load . --source web`), or load the whole
+    repository at once. The message names both files.
+
 ??? failure "It says `precedent.yaml: …`"
 
     An entry in `precedent.yaml` has a mistake. The message names the decision and the entry. Fix it and run

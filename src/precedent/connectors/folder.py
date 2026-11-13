@@ -71,6 +71,24 @@ def _readable(rel: Path) -> bool:
     return rel.suffix.lower() == ".md" and not skipped and not NOT_DECISIONS.fullmatch(rel.name)
 
 
+def repository(root: Path) -> tuple[Path, str] | None:
+    """The git repository a folder is in: its top folder and its `origin` remote ("" without one), else None."""
+    top = _git(root, "rev-parse", "--show-toplevel")
+    if top is None:
+        return None
+    return Path(top), _git(root, "remote", "get-url", "origin") or ""
+
+
+def _git(root: Path, *args: str) -> str | None:
+    done = subprocess.run(  # noqa: S603 (fixed arguments, no shell)
+        ["git", "-C", str(root), *args],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
 def _git_files(root: Path) -> list[Path] | None:
     """Files git shows (tracked, or new and not ignored) that still exist; None outside a git repository."""
     listed = subprocess.run(  # noqa: S603 (fixed arguments, no shell)

@@ -49,6 +49,17 @@ class SourceRef(Frozen):
     quote: str | None = None
 
 
+class Origin(Frozen):
+    """Where a decision was loaded from (ADR0021): its repository and its file inside it.
+
+    `repo` is the remote's name ("github.com/acme/web"), PRECEDENT_REPO, or "local" for a folder with no remote;
+    `path` is the file inside the repository, so two clones of one repository give the same origin.
+    """
+
+    repo: str = Field(min_length=1)
+    path: str = Field(min_length=1)
+
+
 class DecisionRecord(Frozen):
     # The org, an optional source name and the ADR number, joined by slashes (ADR0012).
     id: str = Field(pattern=r"^[a-z0-9-]+/(?:[a-z0-9-]+/)?[A-Za-z0-9-]+$")
@@ -71,6 +82,7 @@ class DecisionRecord(Frozen):
     rationale: str | None = None
     needs_review: bool = False
     sources: tuple[SourceRef, ...] = Field(min_length=1)
+    origin: Origin | None = None  # set by the load for decision files; None for decisions found in documents
 
     @model_validator(mode="after")
     def _rules(self) -> Self:

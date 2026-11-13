@@ -8,7 +8,7 @@ from redis.backoff import NoBackoff
 from redis.retry import Retry
 
 from precedent.core.authority import Link, Party, with_replacements
-from precedent.core.model import DecisionRecord, content_hash
+from precedent.core.model import DecisionRecord, Origin, content_hash
 from precedent.core.preflight import Rule
 
 DEFAULT_URL = "redis://localhost:6380"  # a FalkorDB server run with Docker (6379 is often a local Redis)
@@ -99,6 +99,15 @@ MATCH (d:Decision)-[c:CITES]->(s:Source {kind: 'doc'})
 WHERE d.id STARTS WITH $prefix AND s.url IN $urls AND d.status <> 'deprecated'
 RETURN d.id, s.url, c.quote
 """
+# Where each decision was loaded from (ADR0021): the ones these ids already name, and every one from this repository.
+ORIGINS = "MATCH (d:Decision) WHERE d.id IN $ids OR d.repo = $repo RETURN d.id, d.repo, d.path"
+# A decision whose file is gone states nothing any more: its stances and "replaces" links stop counting, kept as
+# history (spec §4). Clearing the hash lets it come back as it was if the file returns.
+RETIRE_GONE = (
+    "MATCH (d:Decision)-[a:APPLIES_TO]->() WHERE d.id IN $ids AND a.invalid_at IS NULL SET a.invalid_at = $now",
+    "MATCH (d:Decision)-[r:SUPERSEDES]->() WHERE d.id IN $ids AND r.invalid_at IS NULL SET r.invalid_at = $now",
+    "MATCH (d:Decision) WHERE d.id IN $ids SET d.hash = null",
+)
 DECISION_PROPS = {
     "title",
     "statement",
@@ -126,9 +135,24 @@ def retire_found(graph: Graph, prefix: str, urls: list[str], kept: list[str]) ->
     graph.query(RETIRE_FOUND, {"prefix": prefix, "urls": urls, "kept": kept})
 
 
+def origins(graph: Graph, ids: list[str], repo: str) -> list[tuple[str, Origin | None]]:
+    """Where the decisions with these ids, and every decision from this repository, were loaded from."""
+    rows = graph.query(ORIGINS, {"ids": ids, "repo": repo}).result_set
+    return [(i, Origin(repo=r, path=p) if r and p else None) for i, r, p in rows]
+
+
+def retire_gone(graph: Graph, ids: list[str]) -> None:
+    if ids:
+        now = datetime.now(UTC).isoformat()
+        for query in RETIRE_GONE:
+            graph.query(query, {"ids": ids, "now": now})
+
+
 def save_decision(graph: Graph, record: DecisionRecord) -> bool:
     """Write a decision with its scopes, the decisions it replaces and its sources. False if nothing changed."""
     props = record.model_dump(mode="json", include=DECISION_PROPS)
+    if record.origin:
+        props |= {"repo": record.origin.repo, "path": record.origin.path}
     scopes = [s.model_dump() for s in record.scopes]
     # MERGE keys can't be null, so a missing section or quote is stored as "".
     sources = [s.model_dump() | {"section": s.section or "", "quote": s.quote or ""} for s in record.sources]

@@ -31,6 +31,7 @@ All of them:
 | [0018](0018-which-rule-wins.md) | Which rule wins: a fixed order, and an honest disagreement |
 | [0019](0019-a-replacement-needs-authority.md) | A replacement needs authority |
 | [0020](0020-one-number-one-decision.md) | One id, one file, and nothing is written until everything is checked |
+| [0021](0021-decisions-remember-where-they-come-from.md) | Decisions remember where they were loaded from |
 
 The full technical design is in [`docs/spec.md`](https://github.com/dhruvalgupta2003/precedent/blob/main/docs/spec.md)
 on GitHub.

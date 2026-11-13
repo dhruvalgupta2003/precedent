@@ -13,7 +13,9 @@ from precedent.adapters.falkor import (
     ensure_schema,
     found_quotes,
     found_urls,
+    origins,
     retire_found,
+    retire_gone,
     rules,
     save_decision,
 )
@@ -21,9 +23,10 @@ from precedent.connectors import adr, folder
 from precedent.core.authority import Standing, resolve
 from precedent.core.diff import Change, facts
 from precedent.core.doctor import StaleLine, mentions, stale_lines
-from precedent.core.errors import ExtractionError
+from precedent.core.errors import ExtractionError, KnowledgeError
 from precedent.core.grounding import grounded, keep_grounded
-from precedent.core.model import DecisionRecord, Scope
+from precedent.core.model import DecisionRecord, Origin, Scope
+from precedent.core.origin import Reach, clashes, gone, repo_name
 from precedent.core.preflight import Report, check
 
 if TYPE_CHECKING:
@@ -65,12 +68,16 @@ def ingest(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> Ingest
     counts: Counter[str] = Counter()
     org, _, source = org.partition("/")
     plan = folder.scan(Path(root))
-    decisions = _read_all(plan.adr_folders, Path(root), org, source)
+    reach, base = _reach(Path(root))
+    decisions = [_placed(d, reach, base) for d in _read_all(plan.adr_folders, Path(root), org, source)]
+    ensure_schema(graph)
+    loaded = origins(graph, [d.id for d in decisions], reach.repo)
+    _owned(decisions, loaded, reach)
     # The AI reads before the first write too, so nothing is written until everything has been read and checked.
     decisions = [_with_scopes(d, ai.adrs, counts) if ai.adrs else d for d in decisions]
-    ensure_schema(graph)
     for record in decisions:
         counts["written" if save_decision(graph, record) else "unchanged"] += 1
+    retire_gone(graph, gone(loaded, {d.id for d in decisions}, reach))
     docs = _Docs(plan.docs, Path(root), f"{org}/{source}" if source else org)
     counts["found"] = _load_docs(graph, docs, ai.docs, counts)
     return IngestReport(**counts)
@@ -83,6 +90,34 @@ def _read_all(adr_folders: list[Path], root: Path, org: str, source: str) -> lis
     decisions = [record for f in adr_folders for record in adr.records(str(f), org, name[f])]
     adr.one_file_per_id((d.id, Path(os.path.relpath(d.sources[0].url, root)).as_posix()) for d in decisions)
     return decisions
+
+
+def _reach(root: Path) -> tuple[Reach, Path]:
+    """What this load owns (ADR0021), and the folder its files' paths are taken from.
+
+    The repository is PRECEDENT_REPO, else the git remote `origin` (so a laptop and CI agree), else "local" with
+    paths from the top of this machine's file system.
+    """
+    found = folder.repository(root)
+    name = os.environ.get("PRECEDENT_REPO") or (repo_name(found[1]) if found else None)
+    base = (found[0] if found else root.resolve()) if name else Path("/")
+    under = Path(os.path.relpath(root.resolve(), base.resolve())).as_posix()
+    return Reach(name or "local", "" if under == "." else f"{under}/"), base
+
+
+def _placed(record: DecisionRecord, reach: Reach, base: Path) -> DecisionRecord:
+    path = Path(os.path.relpath(Path(record.sources[0].url).resolve(), base.resolve())).as_posix()
+    return record.model_copy(update={"origin": Origin(repo=reach.repo, path=path)})
+
+
+def _owned(decisions: list[DecisionRecord], loaded: list[tuple[str, Origin | None]], reach: Reach) -> None:
+    """Refuse to take a decision id from a file this load doesn't own: another repository, or another folder."""
+    found = clashes([(d.id, d.origin) for d in decisions if d.origin], loaded, reach)
+    if found:
+        raise KnowledgeError(
+            "; ".join(found) + ". Load one of them with --source NAME (for example its repository's name), so each"
+            " keeps its own ids"
+        )
 
 
 def _source(source: str, adr_folder: Path, root: Path) -> str:
