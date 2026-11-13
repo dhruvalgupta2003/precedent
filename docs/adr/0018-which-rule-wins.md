@@ -26,8 +26,9 @@ normal case, not an edge case.
    4. otherwise, stances on opposite sides (`avoid` against `prefer`/`require`) are **disputed**.
 2. Each stance gets an outcome (wins, outranked, disputed, replaced, retired) and a reason in plain words.
 3. Pre-flight speaks only for stances that win. An outranked stance raises nothing. Disputed stances raise one
-   **disagreement** finding that names all of them. It warns and never blocks, because the team hasn't settled it.
-   The agent is told to ask the user, not to pick one.
+   **disagreement** finding that names all of them, and the agent is told to ask the user, not to pick one. While
+   they disagree, the safer side holds: the finding blocks when a reviewed stance among them says `avoid`, and warns
+   otherwise.
 4. Never by date, never by which file is closer: a disagreement is settled by a person, recorded as a decision that
    replaces the other.
 5. `precedent why NAME` prints the ranking, the winner first, each with its reason, decision date, quote and source.
@@ -36,14 +37,19 @@ normal case, not an edge case.
 ## Alternatives
 - **Newest wins**: rejected. Dates in decision records are often missing or wrong, and "newer" is not "agreed".
   A team that wants the newer one to win says so with a "replaces" link.
-- **Avoid always wins (the old behaviour)**: rejected. It turns an open question into a block, and hides it.
+- **Avoid silently wins (the old behaviour)**: rejected. The block itself stays (point 3), but the old behaviour hid
+  the open question: nobody learned that two decisions disagree, or who has to settle it.
 - **Let a model judge**: rejected. Verdicts must be the same every time (spec §7), and an injected document must not
   be able to sway them.
 
 ## Consequences
-- Security: only reviewed content can weaken a reviewed block. An AI-read or proposed "prefer" never outranks a
-  reviewed "avoid" (a test guards it).
-- Two reviewed decisions that disagree now give WARN where they used to give BLOCK.
+- Security: nothing can weaken a reviewed block by disagreeing with it. An AI-read or proposed "prefer" is outranked,
+  and even a reviewed one only adds a disagreement to the block (tests guard both). The first version of this ADR
+  let a reviewed disagreement downgrade the block to WARN; a security review showed that one new accepted-looking
+  file with its own `precedent.yaml`, anywhere in the loaded folder, could then unblock what the team forbade,
+  without touching the real decision's files.
+- Text from documents that reaches people or agents is cleaned: control characters are removed from quotes in
+  `precedent why`, and a scope value with a tab or newline is no longer accepted as code.
 - The next step is **where** a decision applies (company, repo or service, folder). A narrower decision then wins
   inside its place, so a service's approved exception stops being a disagreement. Owners on decisions come after it,
   so a disagreement can name who decides.

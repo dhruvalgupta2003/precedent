@@ -119,9 +119,11 @@ def _finding(rule: Rule, backed: AbstractSet[tuple[str, str]]) -> Finding | None
 
 
 def _disagreement(standings: list, facts: Facts) -> Finding | None:
-    """Decisions in force that disagree about something this change touches: one warning that names them all.
+    """Decisions in force that disagree about something this change touches: one finding that names them all.
 
-    Never a block: the team hasn't settled it, so the person decides (ADR0018).
+    It blocks when a reviewed decision says to avoid it: a disagreement must never weaken a reviewed block, or one new
+    accepted-looking file anywhere in the loaded folder could unblock what the team forbade. The safer side holds
+    until a person settles it (ADR0018).
     """
     disputed = sorted((s.rule for s in standings if s.outcome == "disputed"), key=lambda r: r.decision)
     if not disputed or not any(_applies(r.scope, facts) or _applies(r.scope, facts, uses) for r in disputed):
@@ -137,6 +139,7 @@ def _disagreement(standings: list, facts: Facts) -> Finding | None:
         quote=first.scope.quote,
         source=first.source,
         disputed_with=tuple(r.decision for r in others),
+        blocks=any(r.may_block and r.scope.polarity == "avoid" for r in disputed),
     )
 
 

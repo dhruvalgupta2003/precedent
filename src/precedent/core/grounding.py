@@ -21,6 +21,8 @@ def grounded(quote: str, source: str) -> bool:
 
 def looks_like_code(scope: Scope) -> bool:
     value = scope.value
+    if re.search(r"[^\S ]", value):  # a tab, newline or other control space: code values never hold one
+        return False
     if scope.kind == "package":
         return bool(PACKAGE.fullmatch(value))
     if scope.kind in ("symbol", "config"):

@@ -37,15 +37,17 @@ def test_an_unreviewed_decision_can_never_weaken_a_reviewed_block():
     assert check(ADDS_AXIOS, rules).verdict == "BLOCK"
 
 
-def test_two_reviewed_decisions_that_disagree_warn_and_name_both():
-    """Neither replaces the other, so the team hasn't settled it: never pick one, never block on it."""
+def test_two_reviewed_decisions_that_disagree_still_block_and_name_both():
+    """A disagreement can't weaken a reviewed 'avoid': otherwise one new file anywhere in the loaded folder, an
+    accepted-looking ADR with its own precedent.yaml, could turn a real BLOCK into a WARN (security review, PR #57).
+    The safer side holds until a person settles it, and the message names both sides."""
     rules = [stance("team/ADR3", "avoid"), stance("team/ADR9", "prefer")]
 
     report = check(ADDS_AXIOS, rules)
 
-    assert report.verdict == "WARN"
+    assert report.verdict == "BLOCK"
     [finding] = report.findings
-    assert (finding.kind, finding.blocks) == ("disagreement", False)
+    assert (finding.kind, finding.blocks) == ("disagreement", True)
     assert {finding.decision, *finding.disputed_with} == {"team/ADR3", "team/ADR9"}
 
 
@@ -55,7 +57,10 @@ def test_two_unreviewed_decisions_that_disagree_are_a_disagreement_too():
         stance("team/doc-b", "prefer", reviewed=False),
     ]
 
-    assert [f.kind for f in check(ADDS_AXIOS, rules).findings] == ["disagreement"]
+    report = check(ADDS_AXIOS, rules)
+
+    assert [f.kind for f in report.findings] == ["disagreement"]
+    assert report.verdict == "WARN"  # nothing reviewed forbids it, so nothing blocks
 
 
 def test_decisions_that_agree_each_count():

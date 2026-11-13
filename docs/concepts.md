@@ -75,11 +75,12 @@ that tells two decisions apart decides:
 2. **The newer decision that says it replaces another wins.**
 3. **Reviewed beats unreviewed.** An accepted decision note, or an entry in `precedent.yaml`, beats a proposed
    decision or anything an AI read. So an AI can never weaken a rule a person approved.
-4. **Otherwise, they disagree.** Precedent never picks one by date or by which file is closer. It warns, names
-   both decisions, and asks a person to decide. Record the answer as a new decision that replaces the other.
+4. **Otherwise, they disagree.** Precedent never picks one by date or by which file is closer. It names both
+   decisions and asks a person to decide. Record the answer as a new decision that replaces the other.
 
-A disagreement only warns, never stops a change: the team hasn't settled it yet. To see the order for anything,
-run `precedent why`:
+While they disagree, the safer side holds: if a reviewed decision says to avoid it, the change stops; otherwise
+Precedent warns. So a new file that only claims the opposite can never unblock what the team forbade. To see the
+order for anything, run `precedent why`:
 
 <div class="pc-terminal" markdown>
 

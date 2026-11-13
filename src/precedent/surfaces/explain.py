@@ -1,8 +1,11 @@
 """`precedent why`: which decision about something wins, and why (ADR0018), as text for people or JSON for tools."""
 
+import re
+
 from precedent.core.authority import Standing
 
 Ranked = dict[tuple[str, str], list[Standing]]
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def explain(name: str, ranked: Ranked) -> str:
@@ -26,11 +29,16 @@ def _thing(kind: str, value: str, standings: list[Standing]) -> str:
     for s in standings:
         when = f" · decided {s.rule.decided_at}" if s.rule.decided_at else ""
         lines.append(f"- {s.rule.decision} · {s.rule.scope.polarity} · {s.outcome}: {s.reason}{when}")
-        quote = f'"{" ".join(s.rule.scope.quote.split())}"' if s.rule.scope.quote else ""
+        quote = f'"{_plain(s.rule.scope.quote)}"' if s.rule.scope.quote else ""
         where = f"({s.rule.source})" if s.rule.source else ""
         if quote or where:
             lines.append(f"    {' '.join(p for p in (quote, where) if p)}")
     return "\n".join(lines)
+
+
+def _plain(text: str) -> str:
+    """A quote from an untrusted document, as one line with no control characters (no terminal escapes)."""
+    return " ".join(CONTROL.sub(" ", text).split())
 
 
 def _verdict(standings: list[Standing]) -> str:

@@ -66,3 +66,16 @@ def test_json_carries_each_standing_for_other_tools():
             }
         ],
     }
+
+
+def test_quotes_lose_control_characters_so_a_document_cant_drive_the_terminal():
+    """Quotes come from untrusted documents; an escape sequence in one must not reach a terminal or an agent as is."""
+    scope = Scope.model_validate(
+        {"kind": "package", "value": "axios", "polarity": "avoid", "quote": "use fetch\x1b[2J now"}
+    )
+    rule = Rule(decision="t/A", title="A", status="accepted", tier="structured", confirmed=True, scope=scope)
+
+    text = explain("axios", {("package", "axios"): [Standing(rule, "wins", "reviewed and in force")]})
+
+    assert "\x1b" not in text
+    assert '"use fetch [2J now"' in text
