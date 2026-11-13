@@ -34,7 +34,7 @@ Precedent BLOCK: this change touches decisions the team recorded.
 - myteam/ADR010 says avoid moment-timezone: "moment-timezone is an add-on that brings in Moment (precedent.yaml)" (docs/adr/adr010-luxon-date-library.md)
 ```
 
-**Status: v0.1, early.** It works on real decisions and real PRs ([Does it work?](#does-it-work)) and has known
+**Status: v0.2, early.** It works on real decisions and real PRs ([Does it work?](#does-it-work)) and has known
 limits ([docs/limits.md](docs/limits.md)). Issues and feedback are welcome.
 
 ## Try it in 2 minutes
