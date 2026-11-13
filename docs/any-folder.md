@@ -29,7 +29,7 @@ Any file shaped like a decision note (ADR), in any subfolder. Precedent recognis
 <span class="pc-num">2</span>**Decisions marked in other docs**
 
 READMEs, guides, design docs: any `.md` file. Without AI, Precedent finds decisions that are clearly marked (see
-below).
+below). With AI, it also finds decisions written as ordinary sentences.
 </div>
 </div>
 
@@ -67,6 +67,23 @@ Write it in one of these ways, and Precedent finds it without any AI:
 Put the names of libraries, code or folders in backticks. Words like **do not use**, **avoid** or **instead of**
 before them mean "avoid it". **Use** or **prefer** mean "this is the right way".
 
+## Let an AI find the rest
+
+Most decisions are written as ordinary sentences, like "After the outage we stopped using axios." An AI can find those.
+Set a model and its key, then load again:
+
+```sh
+export PRECEDENT_MODEL_EXTRACT=anthropic:claude-haiku-5-5
+export ANTHROPIC_API_KEY=...
+precedent load .
+```
+
+- It looks only for decisions **already made**. Questions, proposals and descriptions of how the code works today are
+  not decisions.
+- It must quote the document word for word, or its answer is thrown away.
+- What it finds is treated like everything found in documents (below): it can warn, never stop.
+- Answers are saved on your computer, so loading the same documents again is free.
+
 ## What happens to what it finds
 
 A decision found in an ordinary document is **proposed**. It can say **⚠️ take a look**, never **🛑 stop**, because
@@ -81,13 +98,13 @@ Precedent WARN: this change touches decisions the team recorded.
 
 </div>
 
-If you edit the document and the decision is gone, Precedent stops warning about it the next time you load.
+If you edit the document and the decision's sentence is gone, Precedent stops warning about it the next time you load.
+Loading again without an AI (a teammate, or CI) keeps what an AI found, as long as the sentence is still there.
 
 **To make it able to stop a change,** turn it into a decision note: copy it into `docs/adr/`, set its Status to
 `Accepted`, and [list what to look for](covers.md).
 
 ## Coming next
 
-- **AI that reads ordinary prose,** including through the Claude Code you already use, so decisions don't need to be
-  marked.
+- **Using the Claude Code you already use** to read documents, instead of a model key.
 - **Drafting decision notes for you** (`--draft-adrs`), so accepting a found decision is one review in a pull request.

@@ -185,3 +185,11 @@ def test_a_glossary_entry_for_the_word_decision_is_not_a_decision(tmp_path):
     root = tree(tmp_path, {"glossary.md": "**Decision**\n:   Something your team agreed on, like `luxon`.\n"})
 
     assert folder.found_in(root / "glossary.md", root, "team") == []
+
+
+def test_an_example_in_an_indented_code_block_is_not_a_decision(tmp_path):
+    """Code blocks inside tabs and list items are indented; the docs' own examples were being found as decisions."""
+    doc = '=== "A Decision line"\n\n    ```markdown\n    Decision: do not use `axios`.\n    ```\n'
+    root = tree(tmp_path, {"docs/guide.md": doc})
+
+    assert folder.found_in(root / "docs" / "guide.md", root, "team") == []

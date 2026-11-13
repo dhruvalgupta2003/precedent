@@ -48,16 +48,16 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def run_ingest(args: argparse.Namespace) -> int:
-    reader = None if args.no_ai else service.default_scope_reader()
+    ai = service.Readers() if args.no_ai else service.readers()
     prefix = f"{args.org}/{args.source}" if args.source else args.org
-    report = service.ingest(_graph(args.org), args.folder, prefix, reader)
+    report = service.ingest(_graph(args.org), args.folder, prefix, ai)
     total = report.written + report.unchanged
     news = f"{report.written} new or changed, {report.unchanged} already up to date"
     print(f"Loaded {total} decision{'' if total == 1 else 's'} into {args.org!r}: {news}.")
     if report.found:
         found = f"Found {report.found} more in other documents"
         print(f"{found}. They are proposed: they can warn, but not stop a change, until someone accepts them.")
-    if reader:
+    if ai.adrs or ai.docs:
         skipped = f"skipped {report.dropped} it couldn't quote word for word"
         print(f"The AI found {report.scopes} things to look for; {skipped}; {report.failed} files failed.")
     return 0

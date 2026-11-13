@@ -4,20 +4,46 @@ import os
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from falkordb import Graph
 
-from precedent.adapters.falkor import connect, ensure_schema, found_urls, retire_found, rules, save_decision
+from precedent.adapters.falkor import (
+    connect,
+    ensure_schema,
+    found_quotes,
+    found_urls,
+    retire_found,
+    rules,
+    save_decision,
+)
 from precedent.connectors import adr, folder
 from precedent.core.diff import Change, facts
 from precedent.core.doctor import StaleLine, mentions, stale_lines
 from precedent.core.errors import ExtractionError
-from precedent.core.grounding import keep_grounded
+from precedent.core.grounding import grounded, keep_grounded
 from precedent.core.model import DecisionRecord, Scope
 from precedent.core.preflight import Report, check
 
+if TYPE_CHECKING:
+    from precedent.adapters.llm import Kind
+
 ScopeReader = Callable[[str], list[Scope]]
+
+
+class Readers(NamedTuple):
+    """The AI readers for one load (ADR0014): one for ADRs, one for ordinary documents. None: no AI."""
+
+    adrs: ScopeReader | None = None
+    docs: ScopeReader | None = None
+
+
+class _Docs(NamedTuple):
+    """The ordinary documents of one load, the folder they were loaded from, and the id prefix for what's found."""
+
+    paths: list[Path]
+    root: Path
+    prefix: str
 
 
 class IngestReport(NamedTuple):
@@ -29,7 +55,7 @@ class IngestReport(NamedTuple):
     found: int = 0  # decisions found in ordinary documents (ADR0014): proposed, may warn, never block
 
 
-def ingest(graph: Graph, root: str, org: str, read_scopes: ScopeReader | None = None) -> IngestReport:
+def ingest(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> IngestReport:  # noqa: B008 (immutable)
     """Load any folder (ADR0014): its ADRs wherever they are, and the decisions marked in its other documents.
 
     `org` may be "org/source" to keep this folder's decision ids apart from another's (ADR0012). With ADRs in more
@@ -42,9 +68,10 @@ def ingest(graph: Graph, root: str, org: str, read_scopes: ScopeReader | None = 
     for adr_folder in plan.adr_folders:
         name = _source(source, adr_folder, Path(root)) if len(plan.adr_folders) > 1 else source or None
         for parsed in adr.records(str(adr_folder), org, name):
-            record = _with_scopes(parsed, read_scopes, counts) if read_scopes else parsed
+            record = _with_scopes(parsed, ai.adrs, counts) if ai.adrs else parsed
             counts["written" if save_decision(graph, record) else "unchanged"] += 1
-    counts["found"] = _load_docs(graph, plan.docs, Path(root), f"{org}/{source}" if source else org)
+    docs = _Docs(plan.docs, Path(root), f"{org}/{source}" if source else org)
+    counts["found"] = _load_docs(graph, docs, ai.docs, counts)
     return IngestReport(**counts)
 
 
@@ -54,15 +81,38 @@ def _source(source: str, adr_folder: Path, root: Path) -> str:
     return f"{source}-{where}" if source else where
 
 
-def _load_docs(graph: Graph, docs: list[Path], root: Path, prefix: str) -> int:
-    """Save what the documents mark as decisions, and retire what they (or deleted documents) no longer say."""
-    found = [record for doc in docs for record in folder.found_in(doc, root, prefix)]
+def _load_docs(graph: Graph, docs: _Docs, read: ScopeReader | None, counts: Counter[str]) -> int:
+    """Save the decisions found in the documents, and retire those whose sentence (or document) is gone.
+
+    A found decision stays while its quote is still in its document, whoever found it: a later load without an AI
+    (a teammate, CI) must not silently undo what the AI found.
+    """
+    found = [record for doc in docs.paths for record in _found_in(doc, docs, read, counts)]
     for record in found:
         save_decision(graph, record)
-    under = "" if str(root) == "." else f"{root}/"
-    gone = [u for u in found_urls(graph, f"{prefix}/") if _inside(u, under) and not Path(u).exists()]
-    retire_found(graph, f"{prefix}/", [str(d) for d in docs] + gone, [r.id for r in found])
+    prefix, urls = f"{docs.prefix}/", [str(d) for d in docs.paths]
+    still = [i for i, url, quote in found_quotes(graph, prefix, urls) if grounded(quote, folder.body(Path(url)))]
+    under = "" if str(docs.root) == "." else f"{docs.root}/"
+    gone = [u for u in found_urls(graph, prefix) if _inside(u, under) and not Path(u).exists()]
+    retire_found(graph, prefix, urls + gone, [r.id for r in found] + still)
     return len(found)
+
+
+def _found_in(doc: Path, docs: _Docs, read: ScopeReader | None, counts: Counter[str]) -> list[DecisionRecord]:
+    """The marked decisions in a document and, with an AI, the decisions it states in plain prose (ADR0014)."""
+    marked = folder.found_in(doc, docs.root, docs.prefix)
+    if read is None:
+        return marked
+    text = folder.body(doc)
+    try:
+        scopes = read(text)
+    except ExtractionError:
+        counts["failed"] += 1
+        return marked
+    kept = keep_grounded(scopes, text)
+    counts["scopes"] += len(kept)
+    counts["dropped"] += len(scopes) - len(kept)
+    return folder.merge(marked + folder.from_scopes(doc, docs.root, docs.prefix, kept))
 
 
 def _inside(url: str, under: str) -> bool:
@@ -110,9 +160,14 @@ def preflight(graph: Graph, changes: list[Change]) -> Report:
     return check(facts(changes), rules(graph))
 
 
-def default_scope_reader(kind: Literal["adr", "instructions"] = "adr") -> ScopeReader | None:
-    """The configured extraction model (PRECEDENT_MODEL_EXTRACT), or None to work without AI."""
-    model = os.environ.get("PRECEDENT_MODEL_EXTRACT")
+def readers(model: str | None = None) -> Readers:
+    """The AI readers for a load: the given model, else PRECEDENT_MODEL_EXTRACT; none without a model."""
+    return Readers(default_scope_reader("adr", model), default_scope_reader("docs", model))
+
+
+def default_scope_reader(kind: "Kind" = "adr", model: str | None = None) -> ScopeReader | None:
+    """The given extraction model, else the configured one (PRECEDENT_MODEL_EXTRACT), else None to work without AI."""
+    model = model or os.environ.get("PRECEDENT_MODEL_EXTRACT")
     if not model:
         return None
     # Imported here: the AI library takes ~0.35 s to load, and the hook, which never uses it, runs on every edit.
