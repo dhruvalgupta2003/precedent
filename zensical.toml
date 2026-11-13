@@ -20,6 +20,7 @@ nav = [
     { "1. How it works" = "concepts.md" },
     { "2. See it in 2 minutes" = "try.md" },
     { "3. Set it up for your team" = "setup.md" },
+    { "4. Real-life examples" = "examples.md" },
   ] },
   { "Guides" = [
     { "Tell it what to look for" = "covers.md" },

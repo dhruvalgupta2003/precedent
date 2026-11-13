@@ -13,7 +13,7 @@ hide:
 person or an AI coding assistant is about to undo a decision, Precedent stops them and tells them why.</p>
 
 [See it in 2 minutes](try.md){ .md-button .md-button--primary }
-[How it works](concepts.md){ .md-button }
+[Real-life examples](examples.md){ .md-button }
 
 </div>
 

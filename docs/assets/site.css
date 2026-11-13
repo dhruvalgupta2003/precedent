@@ -231,6 +231,7 @@
 /* Output and commands wrap, so a long line is readable without scrolling sideways (copying keeps the real line). */
 .md-typeset .language-text code,
 .md-typeset .language-sh code,
+.md-typeset .language-markdown code,
 .md-typeset .language-powershell code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
