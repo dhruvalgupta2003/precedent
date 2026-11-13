@@ -20,70 +20,60 @@
   <a href="CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/prs-welcome-8b9bb0?style=for-the-badge&labelColor=1b2430"></a>
 </p>
 
-<p align="center"><b>Your team's decisions, checked before every change.</b></p>
+<p align="center"><b>Keep your team's decisions from being undone.</b></p>
 
-Teams write down decisions: "use the built-in `fetch`, not `node-fetch`", "dates use Luxon, not Moment". Months later,
-a coding agent follows an old note in `CLAUDE.md`, or someone copies old code, and the decision is quietly undone.
+Your team decides things, like "we use Luxon for dates, not Moment". Months later, an AI coding assistant follows an
+old note, or someone copies old code, and the decision is quietly undone.
 
-Precedent knows which of your decisions still hold, and checks every change against them: before a coding agent edits
-a file, in CI, or by hand.
+**Precedent remembers what your team decided, and checks every change against it.** If a person or an AI assistant is
+about to undo a decision, it stops them and says why.
 
 ```
-$ git diff | precedent check --org myteam
+$ precedent check
 Precedent BLOCK: this change touches decisions the team recorded.
-- myteam/ADR010 says avoid moment-timezone: "moment-timezone is an add-on that brings in Moment (precedent.yaml)"
+- team/ADR010 says avoid moment-timezone: "moment-timezone is an add-on that brings in Moment (precedent.yaml)"
 ```
 
-**📖 Read the docs: [dhruvalgupta2003.github.io/precedent](https://dhruvalgupta2003.github.io/precedent/)**
+**📖 Docs, in plain words: [dhruvalgupta2003.github.io/precedent](https://dhruvalgupta2003.github.io/precedent/)**
 
-## Try it in 2 minutes
+## See it in 2 minutes
 
-You need [Docker](https://docs.docker.com/get-docker/) and [uv](https://docs.astral.sh/uv/getting-started/installation/).
-No AI key. This loads 15 real decisions from the Backstage project and checks a one-line change:
+You need [Docker Desktop](https://www.docker.com/products/docker-desktop/),
+[uv](https://docs.astral.sh/uv/getting-started/installation/) and git. No AI key.
 
 ```sh
 git clone https://github.com/dhruvalgupta2003/precedent && cd precedent
-docker compose up -d
-uv run precedent ingest evals/fixtures/backstage --org demo
-printf '+++ b/src/time.ts\n+import tz from "moment-timezone";\n' | uv run precedent check --org demo
+docker compose up -d                                                     # start the database
+uv run precedent load examples/backstage                                 # load 15 real decisions
+uv run precedent check --diff examples/changes/adds-moment-timezone.diff # check a change
 ```
 
-It answers **BLOCK**: Backstage decided to use Luxon for dates, and `moment-timezone` brings Moment back.
-[Walk through it step by step](https://dhruvalgupta2003.github.io/precedent/try/).
+It answers **BLOCK**: the Backstage team decided to use Luxon for dates, and this change brings Moment back.
+[Step by step, with pictures](https://dhruvalgupta2003.github.io/precedent/try/).
 
 ## Use it on your project
 
 ```sh
-uv tool install git+https://github.com/dhruvalgupta2003/precedent@v0.2.0
+uv tool install git+https://github.com/dhruvalgupta2003/precedent
 docker run -d --name precedent-db -p 6380:6379 falkordb/falkordb:6.0.4
 
-precedent ingest docs/adr --org myteam           # load your decision files (ADRs)
-git diff main | precedent check --org myteam     # check a change: exit 0 CLEAR, 1 WARN, 2 BLOCK
-precedent hooks install --org myteam             # check every Claude Code edit before it happens
+precedent load docs/adr        # load your decision notes (ADRs)
+precedent check                # check your changes: 0 all good, 1 take a look, 2 stop
+precedent hooks install        # check every Claude Code edit before it happens
 ```
 
-Precedent also needs to know what code each decision covers, for example "ADR010 covers `moment`". Write it in a small
-`precedent.yaml`, or let an AI read it from your ADRs.
-[Here's how](https://dhruvalgupta2003.github.io/precedent/covers/).
+Precedent also needs to know what to look for in the code for each decision, like "ADR010 means: avoid `moment`".
+You write that in a short [`precedent.yaml`](https://dhruvalgupta2003.github.io/precedent/covers/) next to your notes,
+or let an AI suggest it. [The full setup guide](https://dhruvalgupta2003.github.io/precedent/setup/).
 
 ## Does it work?
 
-- **Real agents.** With a stale `CLAUDE.md` and the decision kept outside the repo, agents followed the current
-  decision 0 times in 5. With Precedent, 5 times in 5. Across three repos: 0/9 without, 9/9 with.
-- **Real pull requests.** It flagged 9 of 9 Backstage PRs that added a package their ADRs advise against, and raised
-  no warnings on 79 ordinary ones.
-- **Early (v0.2)**, with [known limits](https://dhruvalgupta2003.github.io/precedent/limits/).
-  [All the numbers](https://dhruvalgupta2003.github.io/precedent/evidence/).
-
-## Learn more
-
-| | |
-|---|---|
-| [Guard Claude Code](https://dhruvalgupta2003.github.io/precedent/claude-code/) | the hook, and what the agent sees |
-| [Check pull requests in CI](https://dhruvalgupta2003.github.io/precedent/ci/) | a ready-to-use GitHub Actions file |
-| [Find stale instructions](https://dhruvalgupta2003.github.io/precedent/doctor/) | lines in CLAUDE.md or AGENTS.md that go against a decision |
-| [The ideas in plain words](https://dhruvalgupta2003.github.io/precedent/concepts/) | ADRs, scopes, BLOCK vs WARN |
-| [Roadmap](https://dhruvalgupta2003.github.io/precedent/roadmap/) | what's next |
+- **AI assistants.** With an outdated note in the way, they followed the team's current decision 0 times out of 5
+  without Precedent, and 5 times out of 5 with it. Across three projects: 0 of 9 without, 9 of 9 with.
+- **Real pull requests.** It caught all 9 real problems in Backstage's history, and raised no false alarms on 79
+  ordinary pull requests.
+- **Early (version 0.2)**, with [things it can't do yet](https://dhruvalgupta2003.github.io/precedent/limits/).
+  [All the results](https://dhruvalgupta2003.github.io/precedent/evidence/).
 
 ## Contributing
 

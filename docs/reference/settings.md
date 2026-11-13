@@ -1,17 +1,19 @@
 # Settings
 
-Precedent reads a few environment variables. You don't need any of them to start.
+You don't need any of these to start. Set them in your terminal (`export NAME=value`) or in your CI.
 
-| Variable | Default | What it does |
+| Setting | Default | What it does |
 |---|---|---|
+| `PRECEDENT_ORG` | `team` | the name of your set of decisions, so you don't need `--org` |
 | `FALKORDB_URL` | `redis://localhost:6380` | where the database runs |
-| `PRECEDENT_MODEL_EXTRACT` | not set (no AI) | the model that reads ADRs, e.g. `anthropic:claude-haiku-5-5` |
-| your provider's key | — | e.g. `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, for the model above |
-| `XDG_CACHE_HOME` | `~/.cache` | AI answers are cached in `precedent/extract` under it |
+| `PRECEDENT_MODEL_EXTRACT` | not set (no AI) | the AI model that suggests what to look for, e.g. `anthropic:claude-haiku-5-5` |
+| your AI provider's key | — | e.g. `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, for the model above |
+| `XDG_CACHE_HOME` | `~/.cache` | where AI answers are saved (in `precedent/extract`) |
 
-## Where things are stored
+## Where things are kept
 
-- **Decisions:** in FalkorDB, one graph per `--org`. Nothing is deleted: when a decision changes, the old fact gets an
-  end date.
-- **AI answers:** in the cache folder above, never in your repo.
-- **The hook:** in `.claude/settings.local.json` (one repo) or `~/.claude/settings.json` (every repo).
+- **Your decisions:** in the database, one set per `--org` name. Nothing is deleted: when a decision changes, the old
+  version gets an end date.
+- **AI answers:** in the folder above, never in your project.
+- **The Claude Code setting:** `.claude/settings.local.json` in your project, or `~/.claude/settings.json` for all
+  projects.

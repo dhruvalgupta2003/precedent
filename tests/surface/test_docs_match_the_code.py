@@ -35,11 +35,11 @@ def test_every_command_and_option_is_on_the_commands_page(command, options):
     assert [o for o in options if f"`{o}" not in page] == []
 
 
-def test_install_lines_pin_the_current_version():
+def test_an_install_line_that_pins_a_version_pins_the_current_one():
+    """The docs describe `main`. A pin to an older release would install a version without what the docs show."""
     version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
     pages = [ROOT / "README.md", *(ROOT / "docs").rglob("*.md")]
 
     pins = {(p.name, pin) for p in pages for pin in re.findall(r"precedent@v([\d.]+)", p.read_text())}
 
-    assert pins, "no install line pins a version"
-    assert {pin for _, pin in pins} == {version}, sorted(pins)
+    assert {pin for _, pin in pins} <= {version}, sorted(pins)

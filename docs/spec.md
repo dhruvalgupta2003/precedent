@@ -241,10 +241,10 @@ Answer contract: text + `decisions[]` + `path` (node/edge list for the UI) + `so
 
 ### CLI (`precedent`, argparse)
 ```
-precedent ingest <dir> --org backstage [--source NAME] [--no-ai]     # ids: org/[source/]ADRnnn (ADR0012)
+precedent load <dir> [--org NAME] [--source NAME] [--no-ai]   # alias: ingest; ids: org/[source/]ADRnnn (ADR0012); --org defaults to $PRECEDENT_ORG or 'team'
 precedent ingest kep <keps-dir> --org kubernetes [--sigs sig-node,sig-apps]
 precedent why "<question>" --org backstage
-precedent check --org backstage [--diff FILE|-] [--plan "text"] [--format text|json|md]
+precedent check [--org NAME] [--diff FILE|-] [--plan "text"] [--format text|json|md]   # no --diff: piped input, else the repo's uncommitted changes + untracked files
 precedent review [--accept ID | --reject ID]
 precedent context [--paths …] [--budget 1500]    # decisions + recent attempts for this repo/branch/files (hook: SessionStart)
 precedent capture --transcript FILE [--session ID] # candidate decisions from new turns (hook: PreCompact/Stop)

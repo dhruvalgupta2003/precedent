@@ -1,49 +1,58 @@
-# Troubleshooting
+# Common problems
 
-??? failure "`No FalkorDB at redis://localhost:6380`"
+Click a problem to see the fix.
 
-    The database isn't running. Start it:
+??? failure "It says `No FalkorDB at redis://localhost:6380`"
 
-    ```sh
-    docker start precedent-db      # if you used docker run
-    docker compose up -d           # if you're in the precedent repo
-    ```
+    The database isn't running.
 
-    Is port 6380 taken? Run the database on another port and point Precedent at it:
+    1. Open **Docker Desktop** and wait until it says it's running.
+    2. Start the database again:
+
+        ```sh
+        docker start precedent-db      # if you set it up with docker run
+        docker compose up -d           # if you're in the precedent folder (the 2-minute demo)
+        ```
+
+    Something else is using port 6380? Start the database on another port, and tell Precedent:
 
     ```sh
     docker run -d --name precedent-db -p 6390:6379 falkordb/falkordb:6.0.4
     export FALKORDB_URL=redis://localhost:6390
     ```
 
-??? question "`check` says CLEAR for everything"
+??? question "`precedent check` always says all good (CLEAR)"
 
-    No decision has code attached yet. Precedent knows your decisions, but not which code they cover. Add a
-    [`precedent.yaml`](reference/precedent-yaml.md) or set an AI model, then run `precedent ingest` again.
-    See [Say what each decision covers](covers.md).
+    Precedent knows your decisions, but not what to look for in the code. Add a
+    [`precedent.yaml`](covers.md) next to your decision notes, then run `precedent load` again.
 
-??? question "`ingest` says `0 written`"
+??? question "`precedent load` says `0 new or changed`"
 
-    Nothing changed since the last load, so nothing was rewritten. That's expected.
+    Nothing changed since last time, so there was nothing to update. That's fine.
 
-    If it's the first load, check the file names. ADR files need a number first: `0001-title.md`, `adr014-title.md`.
-    Files named `*template*` are skipped.
+    If it's the first time, check the file names. Decision notes need a number at the start: `0001-title.md` or
+    `adr014-title.md`. Files with `template` in the name are skipped.
 
-??? failure "`precedent.yaml: …`"
+??? failure "It says `precedent.yaml: …`"
 
-    The message names the ADR and the entry. Fix that line and run `precedent ingest` again.
-    [All the messages](reference/precedent-yaml.md#what-stops-ingest).
+    An entry in `precedent.yaml` has a mistake. The message names the decision and the entry. Fix it and run
+    `precedent load` again. [What each message means](reference/precedent-yaml.md#what-stops-load).
 
-??? question "`AI read 0 scopes; … N failed`"
+??? failure "It says `Not inside a git repository`"
 
-    The model couldn't be reached. Check the model name in `PRECEDENT_MODEL_EXTRACT` and that its API key is set.
-    Your decisions are still loaded, just without AI findings.
+    `precedent check` with nothing after it checks your project's changes, so run it inside your project folder.
+    Or give it a change file: `precedent check --diff my-change.diff`.
 
-??? question "The Claude Code hook doesn't seem to run"
+??? question "It says `… 1 files failed` after loading with an AI"
 
-    - Start a new Claude Code session after `precedent hooks install`.
-    - Check the settings file has an entry with `precedent check --org … --hook`.
-    - The hook is silent when nothing matches. Try an edit that adds something a decision avoids.
-    - If the database is down, the hook lets every edit through on purpose.
+    Precedent couldn't reach the AI. Check the model name in `PRECEDENT_MODEL_EXTRACT` and that its key is set. Your
+    decisions are still loaded, just without the AI's suggestions.
 
-Still stuck? [Open an issue](https://github.com/dhruvalgupta2003/precedent/issues) with the command and its output.
+??? question "Claude Code doesn't seem to use it"
+
+    - Start a **new** Claude Code session after `precedent hooks install`.
+    - Precedent is quiet when a change is fine. Try adding something a decision avoids.
+    - If the database is off, Precedent lets every edit through on purpose. Start it (see the first problem above).
+
+Still stuck? [Ask on GitHub](https://github.com/dhruvalgupta2003/precedent/issues) and paste the command and what it
+printed.

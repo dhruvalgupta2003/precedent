@@ -7,60 +7,110 @@ hide:
 
 <div class="pc-hero" markdown>
 
-# Your team's decisions, checked before every change
+# Keep your team's decisions from being undone
 
-<p class="pc-lede">Precedent knows which of your team's decisions still hold, and checks every change against them:
-before a coding agent edits a file, in CI, or by hand.</p>
+<p class="pc-lede">Precedent remembers what your team decided, and checks every change to your code against it. If a
+person or an AI coding assistant is about to undo a decision, Precedent stops them and tells them why.</p>
 
-[Try it in 2 minutes](try.md){ .md-button .md-button--primary }
-[Set it up on your project](setup.md){ .md-button }
+[See it in 2 minutes](try.md){ .md-button .md-button--primary }
+[How it works](concepts.md){ .md-button }
 
 </div>
 
 ## The problem
 
-Teams write down decisions: "use the built-in `fetch`, not `node-fetch`", "dates use Luxon, not Moment". Months later,
-a coding agent follows an old note in CLAUDE.md, or someone copies old code, and the decision is quietly undone.
-Nobody notices until review, if then.
+<div class="pc-story" markdown>
+<div class="pc-scene" markdown>
+<span class="pc-when">March</span>
 
-## What it looks like
+**The team decides.** "From now on, we use Luxon for dates, not Moment." Someone writes it down.
+</div>
+<div class="pc-scene" markdown>
+<span class="pc-when">June</span>
 
-An agent is about to add a package your team decided against:
+**An old note stays.** A file of tips for the AI assistant still says "use Moment". Nobody remembers to change it.
+</div>
+<div class="pc-scene is-bad" markdown>
+<span class="pc-when">July</span>
 
-```text
-$ git diff | precedent check --org myteam
-Precedent BLOCK: this change touches decisions the team recorded.
-- myteam/ADR010 says avoid moment-timezone: "moment-timezone is an add-on that brings in Moment (precedent.yaml)"
-```
+**The decision is undone.** The AI assistant follows the old note and brings Moment back. Nobody notices for weeks.
+</div>
+</div>
 
-In Claude Code, the agent gets this before the edit happens. It is told which decision is current and that older
-instructions are out of date. When nothing matches, Precedent says nothing.
+## With Precedent
+
+<div class="pc-chat" markdown>
+<div class="pc-msg is-ai" markdown>
+<span class="pc-who">AI assistant</span>
+I'll add the `moment-timezone` library to format these dates.
+</div>
+<div class="pc-msg is-stop" markdown>
+<span class="pc-who"><span class="pc-icon">🛑</span>Precedent</span>
+Stop. The current decision is ADR010: don't use `moment-timezone`. The team uses Luxon now. Any note that says
+otherwise is out of date.
+</div>
+<div class="pc-msg is-ok" markdown>
+<span class="pc-who">AI assistant</span>
+Got it. I'll use Luxon instead. Also, your note that says "use Moment" is out of date.
+</div>
+</div>
+
+This conversation is shortened. Here are [the exact words Precedent sends](claude-code.md#what-the-assistant-sees).
 
 ## How it works
 
-1. **Load your decisions.** Precedent reads your decision files (ADRs) and learns which ones still hold and which
-   were replaced.
-2. **Say what code each one covers.** For example, "ADR014 covers `node-fetch`". Write it in a small file, or let an
-   AI read it from the ADR.
-3. **Check changes.** Before a Claude Code edit, in CI, or by hand. The answer is <span class="pc-block">BLOCK</span>,
-   <span class="pc-warn">WARN</span> or <span class="pc-clear">CLEAR</span>, with the decision's own words.
+<div class="pc-flow" markdown>
+<div class="pc-step" markdown>
+<span class="pc-num">1</span>**Write decisions down**
 
-New to the words? [The ideas in plain words](concepts.md) explains each one.
+Your team keeps short notes of what it decided. Many teams already do.
+</div>
+<div class="pc-arrow">→</div>
+<div class="pc-step" markdown>
+<span class="pc-num">2</span>**Precedent reads them**
 
-## Why not just write it in CLAUDE.md?
+It learns which decisions still count, and which ones newer decisions replaced.
+</div>
+<div class="pc-arrow">→</div>
+<div class="pc-step" markdown>
+<span class="pc-num">3</span>**Every change is checked**
 
-If the newer decision sits in the same repo, a one-line note helps a lot. But decisions often live somewhere the agent
-can't see: a central platform repo, another team's ADRs, a pull request thread. In our test, with a stale CLAUDE.md
-and the decision kept outside the repo, agents followed the current decision **0 times in 5**, with or without a
-warning note. With Precedent they did **5 times in 5**. [See the numbers](evidence.md).
+Before an AI assistant edits a file, and on every pull request.
+</div>
+</div>
 
-## What it reads and where it works
+## Three possible answers
 
-- **Decision files:** Backstage, MADR, adr-tools (Nygard) and front-matter ADRs.
-- **Changes:** `git diff` output and Claude Code edits, including `package.json` and `requirements*.txt`.
-- **Languages:** JavaScript and TypeScript imports, Python imports.
-- **Runs on:** your laptop and CI, with [FalkorDB](https://www.falkordb.com) as the database.
-- **AI:** optional. Precedent works without any AI key.
+<div class="pc-verdicts" markdown>
+<div class="pc-verdict is-block" markdown>
+<span class="pc-verdict-name"><span class="pc-icon">🛑</span>Stop</span>
 
-It is early (v0.2) and has [known limits](limits.md). Questions and ideas are welcome on
-[GitHub](https://github.com/dhruvalgupta2003/precedent/issues).
+The change goes against a decision the team approved. Shown as `BLOCK`.
+</div>
+<div class="pc-verdict is-warn" markdown>
+<span class="pc-verdict-name"><span class="pc-icon">⚠️</span>Take a look</span>
+
+The change might go against a decision. A person decides. Shown as `WARN`.
+</div>
+<div class="pc-verdict is-clear" markdown>
+<span class="pc-verdict-name"><span class="pc-icon">✅</span>All good</span>
+
+Nothing is against the change. Precedent stays quiet. Shown as `CLEAR`.
+</div>
+</div>
+
+## Who it's for
+
+- **Team leads:** a decision you made once stays made.
+- **Developers:** fewer "we don't do it that way anymore" comments in code review.
+- **Teams that use AI coding assistants**, like Claude Code: the assistant learns the current decision before it
+  writes code.
+
+## Does it work?
+
+In our tests, an AI assistant worked from an outdated note. Without Precedent, it followed the team's current
+decision **0 times out of 5**. With Precedent, **5 times out of 5**. [See all the results](evidence.md).
+
+Precedent is free and open source. It is early (version 0.2), so there are [things it can't do yet](limits.md).
+
+[See it in 2 minutes](try.md){ .md-button .md-button--primary }

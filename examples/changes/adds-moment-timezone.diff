@@ -1,0 +1,6 @@
+--- a/plugins/catalog/src/time.ts
++++ b/plugins/catalog/src/time.ts
+@@ -1,2 +1,3 @@
+ import { formatName } from './names';
++import tz from 'moment-timezone';
+ export const now = () => new Date();
