@@ -38,6 +38,7 @@ dev = [
     "ruff",
     "ty>=0.0.97",
 ]
+docs = ["zensical==0.1.0"]  # the docs website (zensical.toml); `make docs`
 
 [build-system]
 requires = ["hatchling"]

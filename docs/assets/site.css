@@ -1,0 +1,67 @@
+/* Precedent's colours, from the banner: ink navy, signal teal, a warm red for BLOCK. */
+:root {
+  --pc-ink: #1b2430;
+  --pc-teal: #2ee6c5;
+  --pc-teal-deep: #0f6b62;
+  --pc-red: #ff5d73;
+}
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: var(--pc-ink);
+  --md-primary-fg-color--light: #2a3646;
+  --md-primary-fg-color--dark: #0e141d;
+  --md-primary-bg-color: #ffffff;
+  --md-accent-fg-color: var(--pc-teal-deep);
+  --md-typeset-a-color: var(--pc-teal-deep);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 215;
+  --md-default-bg-color: #11171f;
+  --md-primary-fg-color: #0e141d;
+  --md-primary-bg-color: #e8eef5;
+  --md-accent-fg-color: var(--pc-teal);
+  --md-typeset-a-color: var(--pc-teal);
+}
+
+/* Home page hero: one big promise, then the proof. */
+.pc-hero h1 {
+  font-size: clamp(2rem, 1.4rem + 2.6vw, 3.2rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.6em;
+}
+
+.pc-hero p.pc-lede {
+  font-size: 1.15rem;
+  max-width: 38em;
+}
+
+.md-typeset .md-button {
+  border-radius: 6px;
+  transition: transform var(--pc-fast, 150ms) ease-out;
+}
+
+.md-typeset .md-button:hover,
+.md-typeset .md-button:focus-visible {
+  transform: translateY(-1px);
+}
+
+.md-typeset .md-button--primary {
+  background-color: var(--pc-teal);
+  border-color: var(--pc-teal);
+  color: var(--pc-ink);
+}
+
+/* Verdict words in prose. */
+.pc-block { color: var(--pc-red); font-weight: 600; }
+.pc-warn { color: #d99a00; font-weight: 600; }
+.pc-clear { color: var(--pc-teal-deep); font-weight: 600; }
+[data-md-color-scheme="slate"] .pc-clear { color: var(--pc-teal); }
+
+/* Command output wraps, so a long result line is readable without scrolling sideways. */
+.md-typeset .language-text code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

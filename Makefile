@@ -1,6 +1,6 @@
 # One command per task. CI calls these same targets, so local and CI can't drift (ADR0008).
 .DEFAULT_GOAL := help
-.PHONY: help install format lint typecheck test-fast test test-integration eval audit check
+.PHONY: help install format lint typecheck test-fast test test-integration eval audit docs docs-check check
 
 UV   := uv run --locked
 # All generated files live in .cache/ (git-ignored) so the project root stays clean.
@@ -14,7 +14,7 @@ help:  ## List targets
 
 install:  ## Install locked dependencies and git hooks
 	uv sync --locked
-	uvx pre-commit@4.6.2 install
+	uvx pre-commit@4.6.2 install  # commit and pre-push hooks (default_install_hook_types)
 
 format:  ## Auto-format and apply safe lint fixes
 	$(UV) ruff format .
@@ -51,5 +51,12 @@ audit:  ## Vulnerabilities in all locked deps (dev tools run in CI too); licence
 	uv export --frozen --no-dev --format requirements-txt --no-emit-project --no-hashes --quiet -o .cache/requirements-runtime.txt
 	uvx --with-requirements .cache/requirements-runtime.txt pip-licenses@5.5.5 --from=mixed --partial-match \
 		--ignore-packages pip-licenses prettytable wcwidth tomli --fail-on="$(LICENCE_DENY)"
+
+docs:  ## Preview the docs website at http://localhost:8000
+	$(UV) --group docs zensical serve
+
+docs-check:  ## Docs match the code: options documented, version pins current, site builds with no warnings
+	$(UV) pytest tests/surface/test_docs_match_the_code.py -q -p no:randomly
+	$(UV) --group docs zensical build --strict --clean
 
 check: lint typecheck test audit  ## Everything CI runs, before you push
