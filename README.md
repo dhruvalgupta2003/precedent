@@ -61,4 +61,4 @@ It's early (version 0.2), so there are [things it can't do yet](https://dhruvalg
 [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md) ·
 [Design decisions](docs/adr) · License: [Apache-2.0](LICENSE) · Built on [FalkorDB](https://www.falkordb.com)
 
-Built with help from Claude Code, disclosed per the Graph Hacks rules.
+Built with help from Claude Code.
