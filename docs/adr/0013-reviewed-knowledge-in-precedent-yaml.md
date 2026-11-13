@@ -16,8 +16,9 @@ decisions.
    `kind`, `value`, `polarity` and a required `why`.
 2. It is reviewed in PRs like code; the PR is the review queue. Its entries are declared, not AI-read, so a confirmed,
    accepted decision may BLOCK on them (ADR0004).
-3. It is checked strictly. An unknown ADR id, a field typo, a missing `why`, or a value that doesn't look like code
-   stops `ingest` with a message naming the entry. Reviewed input is never half-applied.
+3. It is checked strictly. An unknown ADR id, a missing `why`, any key beyond the four, a key written twice, a value
+   that doesn't look like code, broken YAML or a symlinked file stops `ingest` with a message naming the entry.
+   Reviewed input is never half-applied, and an extra key such as `unless` can't quietly switch a rule off.
 4. The `why` is shown as the reviewer's words, marked `(precedent.yaml)`, never passed off as the ADR's.
 5. If the AI reads the same stance, the declared one wins.
 

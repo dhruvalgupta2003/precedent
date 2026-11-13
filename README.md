@@ -114,7 +114,8 @@ ADR006:
   older advice is out of date.
 - `why`: shown to the agent and the reviewer, marked as coming from `precedent.yaml`.
 
-A mistake (an ADR id that doesn't exist, a typo, a value that isn't code) stops `ingest` and names the line to fix.
+Each entry has exactly these four keys. A mistake (an ADR id that doesn't exist, a typo, an extra key, an ADR listed
+twice, a value that isn't code) stops `ingest` and names what to fix.
 
 ### 4. Check changes
 

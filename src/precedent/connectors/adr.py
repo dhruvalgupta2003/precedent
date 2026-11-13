@@ -24,6 +24,7 @@ STATUS_SECTION = re.compile(r"^##\s+Status\s*$(.*?)(?=^#|\Z)", re.MULTILINE | re
 HEADING = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 DECISION_SECTION = re.compile(r"^##\s+Decision\s*$(.*?)(?=^#|\Z)", re.MULTILINE | re.DOTALL | re.IGNORECASE)
 KNOWLEDGE_FILE = "precedent.yaml"
+FIELDS = {"kind", "value", "polarity", "why"}
 LINK = re.compile(r"\]\((?:\./)?(?:adr)?(\d{3,4})-[^)]*\.md\)")
 REF = re.compile(r"(?:ADR-?)?(\d{3,4})", re.IGNORECASE)
 
@@ -82,22 +83,48 @@ def _knowledge(path: Path, known: set[str]) -> dict[str, list[Scope]]:
     if not path.exists():
         return {}
     found: dict[str, list[Scope]] = {}
-    for adr_id, entries in (yaml.safe_load(path.read_text()) or {}).items():
+    for adr_id, entries in _load(path).items():
         if adr_id not in known:
             raise KnowledgeError(f"{KNOWLEDGE_FILE}: no ADR {adr_id!r} in this folder")
-        found[adr_id] = [_declared(adr_id, entry) for entry in entries or ()]
+        if not isinstance(entries, list):
+            raise KnowledgeError(f"{KNOWLEDGE_FILE}: {adr_id}: expected a list of entries")
+        found[adr_id] = [_declared(adr_id, entry) for entry in entries]
     return found
 
 
+class _StrictLoader(yaml.SafeLoader):
+    """Safe YAML where a key written twice is an error: a second ADR014 block would silently erase the first."""
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict:
+        seen: set[str] = set()
+        for key, _ in node.value:
+            if str(key.value) in seen:
+                raise yaml.MarkedYAMLError(problem=f"{key.value} is written twice", problem_mark=key.start_mark)
+            seen.add(str(key.value))
+        return super().construct_mapping(node, deep)
+
+
+def _load(path: Path) -> dict:
+    if path.is_symlink():  # an error message must never echo lines of a file outside the repo
+        raise KnowledgeError(f"{KNOWLEDGE_FILE} must be a regular file, not a link")
+    try:
+        data = yaml.load(path.read_text(), Loader=_StrictLoader) or {}  # noqa: S506 (a SafeLoader)
+    except yaml.YAMLError as exc:
+        raise KnowledgeError(f"{KNOWLEDGE_FILE}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise KnowledgeError(f"{KNOWLEDGE_FILE}: expected ADR ids at the top level")
+    return data
+
+
 def _declared(adr_id: str, entry: object) -> Scope:
-    """One reviewed entry. A bad one stops ingest with a message that names it."""
+    """One reviewed entry, in exactly the documented shape: extra keys like `unless` could switch a rule off."""
     where = f"{KNOWLEDGE_FILE}: {adr_id}: {entry}"
-    if not isinstance(entry, dict) or not entry.get("why"):
-        raise KnowledgeError(f"{where}: each entry needs kind, value, polarity and why")
+    if not isinstance(entry, dict) or set(entry) != FIELDS or not entry["why"]:
+        raise KnowledgeError(f"{where}: each entry needs exactly kind, value, polarity and why")
     try:
         # The reason is the reviewer's words, not the ADR's: say so wherever it is quoted.
         why = f"{entry['why']} ({KNOWLEDGE_FILE})"
-        scope = Scope.model_validate({k: v for k, v in entry.items() if k != "why"} | {"quote": why})
+        scope = Scope(kind=entry["kind"], value=entry["value"], polarity=entry["polarity"], quote=why)
     except ValidationError as exc:
         error = exc.errors()[0]
         raise KnowledgeError(f"{where}: {'.'.join(map(str, error['loc']))}: {error['msg']}") from exc
