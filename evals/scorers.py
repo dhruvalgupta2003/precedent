@@ -45,7 +45,9 @@ def database() -> FalkorDB:
 
 
 def fresh(name: str) -> Graph:
-    """An empty graph; the test_ prefix marks it disposable."""
+    """An empty graph; the test_ prefix marks it disposable, and nothing else is ever deleted."""
+    if not name.startswith("test_"):
+        raise ValueError(f"refusing to empty {name!r}: eval graphs must be named test_*")
     if name in database().list_graphs():
         database().select_graph(name).delete()
     return database().select_graph(name)

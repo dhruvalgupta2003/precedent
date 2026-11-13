@@ -40,7 +40,7 @@ and answers in Claude Code's format.
 
 Shows every decision about something (a library, a name in the code, a folder), which one wins, and why. For
 example, `precedent why moment`. [Which rule wins](../concepts.md#which-rule-wins) explains the order. A note
-that says it replaces a decision but can't yet, because it is only proposed for example, is listed under that
+that would replace a decision but has no effect, because it is only proposed for example, is listed under that
 decision as *not in effect*, with the reason.
 
 | Option | What it does |

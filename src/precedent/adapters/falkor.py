@@ -77,8 +77,8 @@ MATCH (d:Decision {id: $id})-[a:APPLIES_TO]->(w:Scope)
 WHERE a.invalid_at IS NULL AND NOT ((w.kind + ':' + w.value + ':' + a.polarity) IN $stances)
 SET a.invalid_at = $now
 """
-# The same for "replaces" links (ADR0019): a link the newer decision's file no longer states stops counting, so a
-# claim withdrawn in review can't take effect later, when the decision is accepted.
+# The same for "replaces" links (ADR0019): a link that no file states any more stops counting, so a claim
+# withdrawn in review can't take effect later, when the decision is accepted.
 RETIRE_STALE_LINKS = """
 MATCH (d:Decision {id: $id})-[r:SUPERSEDES]->(o:Decision)
 WHERE r.invalid_at IS NULL AND NOT o.id IN $supersedes
@@ -160,7 +160,8 @@ RETURN n.id, n.status, n.tier, n.confirmed, o.id, o.status, o.tier, o.confirmed
 
 
 def rules(graph: Graph) -> list[Rule]:
-    """Every live stance, each told what replaces its decision; only replacements with authority count."""
+    """Every stance a source still states, each told what replaces its decision; only replacements with authority
+    count."""
     stances = [_rule(row) for row in graph.query(RULES).result_set]
     links = [_link(row) for row in graph.query(LINKS).result_set]
     return with_replacements(stances, links)

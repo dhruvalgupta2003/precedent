@@ -45,15 +45,19 @@ def verdict(graph) -> str:
         ("Proposed", "is only proposed"),
         ("Rejected", "was rejected"),
         ("Draft", "its status is unreadable"),  # not a status we know: flagged for review, never guessed
+        ("Deprecated", "is deprecated"),  # a new file can say this without ever being accepted (review of PR #58)
+        ("Superseded", "is itself marked superseded"),
+        ("Superseded by [ADR0099](0099-x.md)", "is itself marked superseded"),  # names a decision that doesn't exist
     ],
+    ids=["proposed", "rejected", "unreadable", "deprecated", "superseded", "superseded-by-nothing"],
 )
-def test_a_decision_never_accepted_cannot_lift_the_block_it_says_it_replaces(graph, tmp_path, status, why):
+def test_a_decision_whose_file_does_not_say_accepted_cannot_lift_the_block(graph, tmp_path, status, why):
     load(graph, tmp_path, status)
 
     assert verdict(graph) == "BLOCK"
     [(_, standings)] = service.why(graph, "axios").items()
     old = next(s for s in standings if s.rule.decision == "team/ADR0007")
-    assert (old.outcome, old.rule.held_back) == ("wins", (f"team/ADR0042 says it replaces this, but {why}",))
+    assert (old.outcome, old.rule.not_in_effect) == ("wins", (f"team/ADR0042 would replace this, but {why}",))
 
 
 def test_an_accepted_replacement_lifts_the_block(graph, tmp_path):
@@ -109,11 +113,11 @@ def test_a_link_stated_again_counts_again(graph, tmp_path):
 
 def test_loading_the_same_files_twice_changes_nothing(graph, tmp_path):
     load(graph, tmp_path, "Proposed")
-    first = sorted((r.decision, r.superseded_by, r.held_back) for r in rules(graph))
+    first = sorted((r.decision, r.superseded_by, r.not_in_effect) for r in rules(graph))
 
     load(graph, tmp_path, "Proposed")
 
-    assert sorted((r.decision, r.superseded_by, r.held_back) for r in rules(graph)) == first
+    assert sorted((r.decision, r.superseded_by, r.not_in_effect) for r in rules(graph)) == first
 
 
 def record(number: str, status: str, supersedes: tuple[str, ...] = ()) -> DecisionRecord:
@@ -149,3 +153,25 @@ def test_two_accepted_decisions_that_claim_to_replace_each_other_both_stay(graph
 
     assert report.verdict == "BLOCK"
     assert [f.kind for f in report.findings] == ["disagreement"]
+
+
+def test_a_superseded_title_with_a_supersedes_field_cannot_lift_the_block(graph, tmp_path):
+    """Backstage marks old ADRs with "[superseded]" in the title. A new file using that marker was never accepted."""
+    (tmp_path / "0007-avoid-axios.md").write_text(OLD)
+    (tmp_path / "0042-use-axios.md").write_text(
+        "---\ntitle: 'ADR0042: [superseded] Use axios'\nsupersedes: ADR0007\n---\n\n## Decision\n\nUse axios.\n"
+    )
+    (tmp_path / "precedent.yaml").write_text(KNOWLEDGE)
+    service.ingest(graph, str(tmp_path), "team")
+
+    assert verdict(graph) == "BLOCK"
+
+
+def test_a_proposal_later_superseded_by_another_proposal_replaces_nothing(graph, tmp_path):
+    """An honest team: ADR0042 proposed replacing ADR0007, then ADR0050 (also only proposed) superseded ADR0042.
+    Neither was ever accepted, so ADR0007 still holds (design review of PR #58)."""
+    load(graph, tmp_path, "Superseded by [ADR0050](0050-use-ky.md)")
+    (tmp_path / "0050-use-ky.md").write_text("# 50. Use ky\n\n## Status\n\nProposed\n\n## Decision\n\nUse ky.\n")
+    service.ingest(graph, str(tmp_path), "team")
+
+    assert verdict(graph) == "BLOCK"

@@ -72,8 +72,8 @@ Often several decisions talk about the same thing. Precedent settles it the same
 that tells two decisions apart decides:
 
 1. **Only decisions in force count.** One that was replaced, rejected or retired never wins.
-2. **The newer decision that says it replaces another wins**, once it is accepted. A proposed or rejected note
-   that says it replaces an accepted one changes nothing, and an unreviewed decision can never replace a reviewed
+2. **The newer decision that says it replaces another wins**, once it is accepted. A note that isn't accepted
+   (proposed, rejected or deprecated) changes nothing, and an unreviewed decision can never replace a reviewed
    one. `precedent why` lists such a claim under the decision it names, as *not in effect*, with the reason.
 3. **Reviewed beats unreviewed.** An accepted decision note, or an entry in `precedent.yaml`, beats a proposed
    decision or anything an AI read. So an AI can never weaken a rule a person approved.

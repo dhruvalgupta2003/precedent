@@ -34,14 +34,15 @@ def name(kind: tuple) -> str:
 
 
 # The rule, written the way ADR0019 says it, independent of the code under test.
-def accepted_once(status: str | None) -> bool:
-    """A person accepted it at some point: it is in force now, or was until something replaced or retired it."""
-    return status in ("accepted", "superseded", "deprecated")
+def accepted(status: str | None) -> bool:
+    """Its own file says accepted. "Superseded" or "deprecated" don't count: a new file can say either without ever
+    having been accepted (security review of PR #58)."""
+    return status == "accepted"
 
 
 def reviewed(status: str | None, tier: str | None, confirmed: bool) -> bool:
     """Accepted, and a person checked it: a merged decision record or an approved capture (ADR0004)."""
-    return accepted_once(status) and confirmed and tier in ("structured", "capture")
+    return accepted(status) and confirmed and tier in ("structured", "capture")
 
 
 def party(name: str, kind: tuple) -> Party:
@@ -79,7 +80,7 @@ def test_every_kind_of_link_replaces_exactly_when_the_rule_says():
     for newer, older in product(KINDS, KINDS):
         link = Link(party("t/NEW", newer), party("t/OLD", older))
         got = replaced_by([link]).get("t/OLD", ())
-        never_accepted = not accepted_once(newer[0])  # 1. a decision never accepted replaces nothing
+        never_accepted = not accepted(newer[0])  # 1. a decision whose file doesn't say accepted replaces nothing
         outranked = reviewed(*older) and not reviewed(*newer)  # 2. an unreviewed one can't replace a reviewed one
         expected = () if never_accepted or outranked else ("t/NEW",)  # 3. otherwise an accepted one replaces it
         assert got == expected, (newer, older)
@@ -92,9 +93,9 @@ def test_a_link_with_no_effect_always_says_why(newer):
     for older in KINDS:
         found = replacements([Link(party("t/NEW", newer), party("t/OLD", older))]).get("t/OLD")
         assert found is not None
-        assert bool(found.by) != bool(found.held_back)  # it either counts or is explained, never both or neither
-        for note in found.held_back:
-            assert note.startswith("t/NEW says it replaces this, but ")
+        assert bool(found.by) != bool(found.not_in_effect)  # it either counts or is explained, never both or neither
+        for note in found.not_in_effect:
+            assert note.startswith("t/NEW would replace this, but ")
 
 
 PAIRS = list(product(KINDS, STANCE_KINDS))  # 60 x 48 = 2,880
@@ -107,7 +108,7 @@ def test_the_verdict_for_every_pair_when_the_older_decision_says_avoid(newer, ol
     Blocks only when the older one is in force and reviewed; warns when in force but not reviewed (ADR0004).
     """
     rules = with_replacements([stance("t/OLD", "avoid", older)], [Link(party("t/NEW", newer), party("t/OLD", older))])
-    replaced = accepted_once(newer[0]) and not (reviewed(*older) and not reviewed(*newer))
+    replaced = accepted(newer[0]) and not (reviewed(*older) and not reviewed(*newer))
     in_force = older[0] in ("accepted", "proposed") and not replaced
     may_block = older[0] == "accepted" and older[2] and older[1] in ("structured", "capture")
 
@@ -168,22 +169,31 @@ def outcome(rules: list[Rule], links: list[Link]) -> tuple:
     return report.verdict, sorted((f.kind, f.decision) for f in report.findings), sorted(ranked)
 
 
-@settings(max_examples=500, deadline=None)
+GUARD = ("accepted", "structured", True)  # ADR7: reviewed, says avoid axios
+
+
+@settings(max_examples=1000, deadline=None)
 @given(worlds(), st.sampled_from([k for k in STANCE_KINDS if not reviewed(*k)]), st.data())
-def test_adding_anything_unreviewed_never_lifts_a_block(world, kind, data):
-    """The safety rule: a decision nobody reviewed, whatever it says and whatever it claims to replace (itself
-    included), can't turn a BLOCK into anything else."""
+def test_adding_anything_unreviewed_never_lifts_or_invents_a_block(world, kind, data):
+    """The safety rule. Every world starts with a reviewed "avoid axios" (ADR7) that world decisions may replace.
+    Then a decision nobody reviewed (X) is added, saying anything, linked to replace anything (itself included),
+    with anything linked to replace it (a file can say "superseded by" any id). The verdict must be BLOCK after
+    exactly when it was BLOCK before."""
+    kinds = world.kinds | {"t/ADR7": GUARD, "t/X": kind}
+    names = list(kinds)
+    rules = [*world.rules, stance("t/ADR7", "avoid")]
+    onto_guard = data.draw(st.lists(st.sampled_from(list(world.kinds)), max_size=3))
+    links = world.links + [Link(party(a, kinds[a]), party("t/ADR7", GUARD)) for a in onto_guard]
     says = data.draw(st.sampled_from((None, "prefer", "require", "avoid")))
-    targets = data.draw(st.lists(st.sampled_from([*world.kinds, "t/X"]), max_size=7))
-    kinds = world.kinds | {"t/X": kind}
-    extra = [Link(party("t/X", kind), party(t, kinds[t])) for t in targets]
-    before = check(ADDS_AXIOS, with_replacements(world.rules, world.links)).verdict
-    rules = [*world.rules, stance("t/X", says, kind)] if says else world.rules
+    out_of_x = data.draw(st.lists(st.sampled_from(names), max_size=7))
+    into_x = data.draw(st.lists(st.sampled_from(names), max_size=4))
+    extra = [Link(party("t/X", kind), party(t, kinds[t])) for t in out_of_x]
+    extra += [Link(party(f, kinds[f]), party("t/X", kind)) for f in into_x]
+    before = check(ADDS_AXIOS, with_replacements(rules, links)).verdict
 
-    after = check(ADDS_AXIOS, with_replacements(rules, [*world.links, *extra])).verdict
+    after = check(ADDS_AXIOS, with_replacements([*rules, stance("t/X", says, kind)] if says else rules, links + extra))
 
-    if before == "BLOCK":
-        assert after == "BLOCK"
+    assert (before == "BLOCK") == (after.verdict == "BLOCK")
 
 
 @settings(max_examples=300, deadline=None)
@@ -221,7 +231,7 @@ def test_links_that_point_both_ways_replace_only_when_the_claim_going_back_has_n
     for older, by in replaced_by(both_ways).items():
         for newer in by:
             o, n = world.kinds[older], world.kinds[newer]
-            assert not accepted_once(o[0]) or (reviewed(*n) and not reviewed(*o)), (older, newer)
+            assert not accepted(o[0]) or (reviewed(*n) and not reviewed(*o)), (older, newer)
 
 
 @settings(max_examples=300, deadline=None)
@@ -242,7 +252,7 @@ def test_a_decision_is_only_ever_replaced_by_one_with_at_least_its_authority(wor
         for newer in by:
             n, o = world.kinds[newer], world.kinds[older]
             assert newer != older
-            assert accepted_once(n[0])
+            assert accepted(n[0])
             assert reviewed(*n) or not reviewed(*o)
 
 
@@ -253,7 +263,7 @@ def test_every_claimed_replacement_either_counts_or_is_explained(world):
     for lk in set(world.links):
         entry = found[lk.older.id]
         counted = lk.newer.id in entry.by
-        explained = any(note.startswith(f"{lk.newer.id} says it replaces") for note in entry.held_back)
+        explained = any(note.startswith(f"{lk.newer.id} ") for note in entry.not_in_effect)
         assert counted != explained, lk
 
 
@@ -277,7 +287,7 @@ def test_a_proposal_to_replace_a_decision_does_not_lift_its_block():
 
     assert check(ADDS_AXIOS, linked).verdict == "BLOCK"
     [old] = [r for r in linked if r.decision == "t/ADR0007"]
-    assert (old.superseded_by, old.held_back) == ((), ("t/ADR0042 says it replaces this, but is only proposed",))
+    assert (old.superseded_by, old.not_in_effect) == ((), ("t/ADR0042 would replace this, but is only proposed",))
 
 
 def test_once_the_proposal_is_accepted_the_replacement_takes_effect():
@@ -305,7 +315,7 @@ def test_a_decision_never_accepted_replaces_nothing_and_says_why(kind, why):
     found = replacements([Link(adr("t/ADR0042", kind), adr("t/ADR0007"))])
 
     assert found["t/ADR0007"].by == ()
-    assert found["t/ADR0007"].held_back == (f"t/ADR0042 says it replaces this, but {why}",)
+    assert found["t/ADR0007"].not_in_effect == (f"t/ADR0042 would replace this, but {why}",)
 
 
 def test_an_unreviewed_decision_cannot_replace_a_reviewed_one_but_can_replace_another_unreviewed_one():
@@ -317,24 +327,68 @@ def test_an_unreviewed_decision_cannot_replace_a_reviewed_one_but_can_replace_an
 
     found = replacements(links)
 
-    assert found["t/ADR0007"].held_back == ("t/doc-a says it replaces this, but is not reviewed",)
+    assert found["t/ADR0007"].not_in_effect == ("t/doc-a would replace this, but is not reviewed",)
     assert found["t/doc-b"].by == ("t/doc-a",)
 
 
-def test_a_replacement_stays_when_the_newer_decision_is_itself_replaced_later():
-    """No revival: ADR2 replaced ADR1, then ADR3 replaced ADR2 (now marked superseded). ADR1 doesn't come back."""
-    links = [
-        Link(adr("t/ADR2", ("superseded", "structured", True)), adr("t/ADR1")),
-        Link(adr("t/ADR3"), adr("t/ADR2", ("superseded", "structured", True))),
-    ]
+SUPERSEDED = ("superseded", "structured", True)
+DEPRECATED = ("deprecated", "structured", True)
+
+
+def test_a_chain_where_each_file_still_says_accepted_keeps_every_replacement():
+    """ADR2 replaced ADR1, then ADR3 replaced ADR2, and nobody edited the older files: both replacements stand."""
+    links = [Link(adr("t/ADR2"), adr("t/ADR1")), Link(adr("t/ADR3"), adr("t/ADR2"))]
 
     assert replaced_by(links) == {"t/ADR1": ("t/ADR2",), "t/ADR2": ("t/ADR3",)}
 
 
-def test_a_deprecated_decision_keeps_the_replacements_it_made():
-    assert replaced_by([Link(adr("t/ADR2", ("deprecated", "structured", True)), adr("t/ADR1"))]) == {
-        "t/ADR1": ("t/ADR2",)
-    }
+def test_when_a_replacement_is_itself_marked_superseded_the_old_decision_is_back_and_says_why():
+    """Fails closed: once ADR2's file says superseded, its word no longer counts. ADR1 comes back only if its own file
+    still says accepted; mark it superseded too (adr-tools and MADR do this when you supersede)."""
+    links = [Link(adr("t/ADR2", SUPERSEDED), adr("t/ADR1")), Link(adr("t/ADR3"), adr("t/ADR2", SUPERSEDED))]
+
+    found = replacements(links)
+
+    assert replaced_by(links) == {"t/ADR2": ("t/ADR3",)}
+    assert found["t/ADR1"].not_in_effect == ("t/ADR2 would replace this, but is itself marked superseded",)
+
+
+@pytest.mark.parametrize(
+    ("kind", "why"),
+    [(SUPERSEDED, "is itself marked superseded"), (DEPRECATED, "is deprecated")],
+    ids=["superseded", "deprecated"],
+)
+def test_a_new_record_marked_superseded_or_deprecated_cannot_lift_a_block(kind, why):
+    """Security review of PR #58: a new file can say "Deprecated", or carry a [superseded] title, without ever having
+    been accepted. It must not retire an accepted decision."""
+    rules = [stance("t/ADR0007", "avoid"), stance("t/ADR0042", "prefer", kind)]
+
+    linked = with_replacements(rules, [Link(adr("t/ADR0042", kind), adr("t/ADR0007"))])
+
+    assert check(ADDS_AXIOS, linked).verdict == "BLOCK"
+    assert next(r for r in linked if r.decision == "t/ADR0007").not_in_effect == (
+        f"t/ADR0042 would replace this, but {why}",
+    )
+
+
+def test_claiming_to_be_superseded_by_an_accepted_decision_gives_no_authority():
+    """A file's "superseded by ADR0005" line makes ADR0005 point at it. That must not lend it ADR0005's authority."""
+    links = [Link(adr("t/ADR0005"), adr("t/ADR0042", SUPERSEDED)), Link(adr("t/ADR0042", SUPERSEDED), adr("t/ADR0007"))]
+
+    assert replaced_by(links) == {"t/ADR0042": ("t/ADR0005",)}
+
+
+def test_a_record_that_is_not_accepted_cannot_build_a_loop_to_bring_a_replaced_decision_back():
+    """ADR0042 (accepted) replaced ADR0007, whose file still says accepted. A new deprecated ADR0050 says it is
+    superseded by ADR0007 and that it supersedes ADR0042, to close a loop. Its own claim doesn't count, so there
+    is no loop, and ADR0007 stays replaced."""
+    links = [
+        Link(adr("t/ADR0042"), adr("t/ADR0007")),
+        Link(adr("t/ADR0007"), adr("t/ADR0050", DEPRECATED)),
+        Link(adr("t/ADR0050", DEPRECATED), adr("t/ADR0042")),
+    ]
+
+    assert replaced_by(links)["t/ADR0007"] == ("t/ADR0042",)
 
 
 def test_a_decision_that_says_it_replaces_itself_stays_in_force():
@@ -344,7 +398,7 @@ def test_a_decision_that_says_it_replaces_itself_stays_in_force():
     [rule] = with_replacements(rules, links)
 
     assert check(ADDS_AXIOS, [rule]).verdict == "BLOCK"
-    assert (rule.superseded_by, rule.held_back) == ((), ("t/ADR0007 says it replaces itself",))
+    assert (rule.superseded_by, rule.not_in_effect) == ((), ("t/ADR0007 is linked as its own replacement",))
 
 
 def test_two_decisions_that_each_claim_to_replace_the_other_both_stay_and_disagree():
@@ -357,9 +411,9 @@ def test_two_decisions_that_each_claim_to_replace_the_other_both_stay_and_disagr
 
     assert report.verdict == "BLOCK"
     assert [f.kind for f in report.findings] == ["disagreement"]
-    assert {r.decision: r.held_back for r in linked} == {
-        "t/ADR3": ("t/ADR9 says it replaces this, but their replacement links form a loop",),
-        "t/ADR9": ("t/ADR3 says it replaces this, but their replacement links form a loop",),
+    assert {r.decision: r.not_in_effect for r in linked} == {
+        "t/ADR3": ("t/ADR9 would replace this, but their replacement links form a loop",),
+        "t/ADR9": ("t/ADR3 would replace this, but their replacement links form a loop",),
     }
 
 
@@ -398,9 +452,9 @@ def test_with_several_claimed_replacements_only_the_ones_with_authority_count():
     found = replacements(links)["t/ADR0007"]
 
     assert found.by == ("t/ADR0050",)
-    assert found.held_back == (
-        "t/ADR0042 says it replaces this, but is only proposed",
-        "t/ADR0051 says it replaces this, but was rejected",
+    assert found.not_in_effect == (
+        "t/ADR0042 would replace this, but is only proposed",
+        "t/ADR0051 would replace this, but was rejected",
     )
 
 
@@ -439,3 +493,34 @@ def test_a_large_random_graph_is_still_answered_quickly():
     start = time.perf_counter()
     replacements(links)
     assert time.perf_counter() - start < 0.5
+
+
+def test_a_crafted_dense_graph_stays_fast():
+    """Each of 300 reviewed decisions says it replaces every earlier one: 44,850 links, the shape that was slowest
+    before loop detection became linear (security review of PR #58)."""
+    reviewed_kind = ("accepted", "structured", True)
+    links = [
+        Link(party(f"t/D{i}", reviewed_kind), party(f"t/D{j}", reviewed_kind)) for i in range(300) for j in range(i)
+    ]
+
+    start = time.perf_counter()
+    found = replacements(links)
+    assert time.perf_counter() - start < 1.0
+
+    assert sum(1 for r in found.values() if r.by) == 299
+
+
+@pytest.mark.parametrize("closed", [False, True], ids=["chain", "loop"])
+def test_a_crafted_chain_or_loop_of_thousands_of_links_stays_fast(closed):
+    """Worst case for loop detection: every decision reviewed, one long chain (closed into a loop or not). Someone
+    who can add many decision files must not be able to slow down the check that runs before every edit."""
+    reviewed_kind = ("accepted", "structured", True)
+    links = [Link(party(f"t/C{i + 1}", reviewed_kind), party(f"t/C{i}", reviewed_kind)) for i in range(5000)]
+    if closed:
+        links.append(Link(party("t/C0", reviewed_kind), party("t/C5000", reviewed_kind)))
+
+    start = time.perf_counter()
+    found = replacements(links)
+    assert time.perf_counter() - start < 0.5
+
+    assert sum(1 for r in found.values() if r.by) == (0 if closed else 5000)
