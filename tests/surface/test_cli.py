@@ -1,5 +1,7 @@
 import io
 import json
+import subprocess
+from functools import partial
 
 import pytest
 
@@ -7,6 +9,7 @@ from precedent.core.doctor import StaleLine
 from precedent.core.errors import KnowledgeError
 from precedent.core.model import Scope
 from precedent.core.preflight import Finding, Report
+from precedent.service import IngestReport
 from precedent.surfaces.cli import main
 
 EVENT = {"tool_name": "Write", "tool_input": {"file_path": "/r/a.ts", "content": "x"}, "cwd": "/r"}
@@ -137,3 +140,62 @@ def test_hooks_install_takes_either_a_project_or_the_user(tmp_path):
     with pytest.raises(SystemExit) as exited:
         main(["hooks", "install", "--org", "acme", "--user", "--project", str(tmp_path)])
     assert exited.value.code == 2
+
+
+class Terminal(io.StringIO):
+    """stdin when someone types the command themselves: nothing is piped in."""
+
+    def isatty(self) -> bool:
+        return True
+
+
+def test_check_with_nothing_piped_in_checks_this_repos_changes_and_new_files(tmp_path, monkeypatch):
+    git = partial(subprocess.run, cwd=tmp_path, check=True, capture_output=True)
+    git(["git", "init", "-q"])
+    (tmp_path / "a.ts").write_text("export const a = 1;\n")
+    git(["git", "add", "a.ts"])
+    git(["git", "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "-m", "start"])
+    (tmp_path / "a.ts").write_text("export const a = 1;\nimport m from 'moment';\n")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "b.ts").write_text("import tz from 'moment-timezone';\n")
+    seen = []
+    monkeypatch.setattr("precedent.service.preflight", lambda graph, changes: seen.extend(changes) or report("CLEAR"))
+    monkeypatch.setattr("sys.stdin", Terminal())
+    monkeypatch.chdir(tmp_path / "src")  # from a subfolder too: paths stay relative to the repo root
+
+    assert main(["check"]) == 0
+    assert {c.path: c.added for c in seen} == {
+        "a.ts": ("import m from 'moment';",),
+        "src/b.ts": ("import tz from 'moment-timezone';",),
+    }
+
+
+def test_check_outside_a_git_repo_says_how_to_give_it_a_change(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
+    monkeypatch.setattr("sys.stdin", Terminal())
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["check"]) == 1
+    assert "--diff" in capsys.readouterr().err
+
+
+def test_the_org_defaults_to_team_or_precedent_org(monkeypatch):
+    used = []
+    monkeypatch.setattr("precedent.surfaces.cli._graph", used.append)
+    monkeypatch.setattr("precedent.service.preflight", lambda graph, changes: report("CLEAR"))
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+
+    main(["check"])
+    monkeypatch.setenv("PRECEDENT_ORG", "acme")
+    main(["check"])
+
+    assert used == ["team", "acme"]
+
+
+@pytest.mark.parametrize("command", ["load", "ingest"])
+def test_load_is_the_plain_name_and_ingest_still_works(tmp_path, monkeypatch, capsys, command):
+    monkeypatch.setattr("precedent.surfaces.cli._graph", lambda org: None)
+    monkeypatch.setattr("precedent.service.ingest", lambda *_: IngestReport(written=2, unchanged=13))
+
+    assert main([command, str(tmp_path), "--no-ai"]) == 0
+    assert capsys.readouterr().out == "Loaded 15 decisions into 'team': 2 new or changed, 13 already up to date.\n"

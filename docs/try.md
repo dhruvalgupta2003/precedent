@@ -1,97 +1,120 @@
-# Try it in 2 minutes
+# See it in 2 minutes
 
-You'll load 15 real decisions from the [Backstage](https://backstage.io) project and check a few one-line changes
-against them. No AI key needed.
+You'll load 15 real decisions from [Backstage](https://backstage.io), a popular open-source project, and see
+Precedent catch a change that goes against one of them. No account or AI key needed.
 
-**You need:** [Docker](https://docs.docker.com/get-docker/) and [uv](https://docs.astral.sh/uv/getting-started/installation/)
-(a tool that installs Python programs).
+## Before you start
 
-## 1. Get Precedent and start the database
+You need three free tools. You only install them once.
+
+- **Docker Desktop** runs the small database Precedent uses.
+  [Download it](https://www.docker.com/products/docker-desktop/), then open it once.
+- **git** downloads the example. Most Macs already have it; if not, [download it](https://git-scm.com/downloads).
+- **uv** installs and runs Precedent. You install it with one command, below.
+
+Open your **Terminal** (on a Mac, press ⌘ Space and type "Terminal"; on Windows, open "PowerShell") and install uv:
+
+=== "Mac and Linux"
+
+    ```sh
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
+
+=== "Windows"
+
+    ```powershell
+    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+    ```
+
+Then close the Terminal and open it again.
+
+## 1. Download Precedent and start the database
+
+Copy these three lines into the Terminal and press Enter:
 
 ```sh
-git clone https://github.com/dhruvalgupta2003/precedent && cd precedent
+git clone https://github.com/dhruvalgupta2003/precedent
+cd precedent
 docker compose up -d
 ```
 
-This starts FalkorDB, the graph database where Precedent keeps decisions, on `localhost:6380`.
-
-## 2. Load the decisions
+## 2. Load the example decisions
 
 ```sh
-uv run precedent ingest evals/fixtures/backstage --org demo
+uv run precedent load examples/backstage
 ```
+
+The first time takes about a minute while uv gets everything ready. Then you'll see:
+
+<div class="pc-terminal" markdown>
 
 ```text
-demo: 15 written, 0 unchanged
+Loaded 15 decisions into 'team': 15 new or changed, 0 already up to date.
 ```
 
-`--org demo` names the collection of decisions. Use your team's name when you set it up for real.
+</div>
 
-## 3. Check a change
+One of these decisions, ADR010, says: **use Luxon for dates, not Moment.**
 
-This pretends someone added one import line:
+## 3. Check a change that goes against it
+
+This example change adds `moment-timezone`, a library that brings Moment back:
 
 ```sh
-printf '+++ b/src/time.ts\n+import tz from "moment-timezone";\n' | uv run precedent check --org demo
+uv run precedent check --diff examples/changes/adds-moment-timezone.diff
 ```
+
+<div class="pc-terminal" markdown>
 
 ```text
 Precedent BLOCK: this change touches decisions the team recorded.
-- demo/ADR010 says avoid moment-timezone: "moment-timezone is an add-on that brings in Moment (precedent.yaml)" (evals/fixtures/backstage/adr010-luxon-date-library.md)
+- team/ADR010 says avoid moment-timezone: "moment-timezone is an add-on that brings in Moment (precedent.yaml)" (examples/backstage/adr010-luxon-date-library.md)
 ```
 
-Backstage decided to use Luxon for dates (ADR010). `moment-timezone` brings Moment back, so the change is blocked.
-The exit code is `2`, so a CI job would fail here.
+</div>
 
-## 4. Try a few more
+<div class="pc-verdicts" markdown>
+<div class="pc-verdict is-block" markdown>
+<span class="pc-verdict-name"><span class="pc-icon">🛑</span>Stop</span>
 
-=== "Allowed"
+Precedent caught it. It names the decision (ADR010), what to avoid, why, and where the note is.
+</div>
+</div>
 
-    ```sh
-    printf '+++ b/src/time.ts\n+import { DateTime } from "luxon";\n' | uv run precedent check --org demo
-    ```
+## 4. Check a change that's fine
 
-    ```text
-    Precedent CLEAR: no current decision is against this change.
-    ```
+This one uses Luxon, as the team decided:
 
-=== "Another name"
+```sh
+uv run precedent check --diff examples/changes/uses-luxon.diff
+```
 
-    ```sh
-    printf '+++ b/src/Badge.tsx\n+import React from "react";\n+export const Badge: React.FunctionComponent = () => null;\n' \
-      | uv run precedent check --org demo
-    ```
+<div class="pc-terminal" markdown>
 
-    ```text
-    Precedent BLOCK: this change touches decisions the team recorded.
-    - demo/ADR006 says avoid React.FunctionComponent: "React.FC is short for React.FunctionComponent (precedent.yaml)" (evals/fixtures/backstage/adr006-avoid-react-fc.md)
-    ```
+```text
+Precedent CLEAR: no current decision is against this change.
+```
 
-=== "In package.json"
+</div>
 
-    ```sh
-    printf -- '+++ b/package.json\n+    "node-fetch-native": "^1.6.0",\n' | uv run precedent check --org demo
-    ```
+## Try the other examples
 
-    ```text
-    Precedent BLOCK: this change touches decisions the team recorded.
-    - demo/ADR014 says avoid node-fetch-native: "node-fetch-native ships node-fetch under another name (precedent.yaml)" (evals/fixtures/backstage/adr014-use-fetch.md)
-    ```
+There are two more example changes. Both get 🛑 Stop:
 
-## What just happened
+- `uses-react-function-component.diff` writes `React.FunctionComponent`, another name for something ADR006 avoids.
+- `adds-node-fetch-native.diff` adds a copy of a library that ADR014 avoids.
 
-- The ADR files say what Backstage decided, and which decision replaced which.
-- A small file, [`precedent.yaml`](reference/precedent-yaml.md), says what code each decision covers, such as
-  "ADR010 covers `moment-timezone`". A person wrote and reviewed it, so Precedent is allowed to block on it.
-- `check` read the change, found the import, and matched it against the decisions that still hold.
+```sh
+uv run precedent check --diff examples/changes/uses-react-function-component.diff
+uv run precedent check --diff examples/changes/adds-node-fetch-native.diff
+```
 
-With an AI key, Precedent can also read what each ADR covers by itself. Those findings only warn and never block,
-because an AI can be wrong. See [Say what each decision covers](covers.md).
+## When you're done
 
-## Clean up
+This stops the database:
 
 ```sh
 docker compose down
 ```
 
-**Next:** [set it up on your project](setup.md).
+**Next:** [set it up for your team](setup.md).

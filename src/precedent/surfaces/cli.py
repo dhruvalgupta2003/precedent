@@ -4,7 +4,9 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
+from functools import partial
 from pathlib import Path
 
 import redis
@@ -48,20 +50,43 @@ def run_ingest(args: argparse.Namespace) -> int:
     reader = None if args.no_ai else service.default_scope_reader()
     prefix = f"{args.org}/{args.source}" if args.source else args.org
     report = service.ingest(_graph(args.org), args.folder, prefix, reader)
-    print(f"{args.org}: {report.written} written, {report.unchanged} unchanged")
+    total = report.written + report.unchanged
+    news = f"{report.written} new or changed, {report.unchanged} already up to date"
+    print(f"Loaded {total} decision{'' if total == 1 else 's'} into {args.org!r}: {news}.")
     if reader:
-        dropped = f"dropped {report.dropped} (quote not in the source, or not code)"
-        print(f"AI read {report.scopes} scopes; {dropped}; {report.failed} failed")
+        skipped = f"skipped {report.dropped} it couldn't quote word for word"
+        print(f"The AI found {report.scopes} things to look for; {skipped}; {report.failed} files failed.")
     return 0
 
 
 def run_check(args: argparse.Namespace) -> int:
     if args.hook:
         return _hook(args.org)
-    text = sys.stdin.read() if args.diff == "-" else Path(args.diff).read_text()
-    report = service.preflight(_graph(args.org), changes(text))
+    report = service.preflight(_graph(args.org), changes(_change_text(args.diff)))
     print(report.model_dump_json(indent=2) if args.format == "json" else describe(report))
     return EXIT[report.verdict]
+
+
+def _change_text(diff: str | None) -> str:
+    """A diff file, a piped diff, or (typed at a terminal with nothing piped in) this repo's uncommitted changes."""
+    if diff == "-" or (diff is None and not sys.stdin.isatty()):
+        return sys.stdin.read()
+    return Path(diff).read_text() if diff else _working_changes()
+
+
+def _working_changes() -> str:
+    """`git diff HEAD`, plus new files git doesn't track yet as if every line were added. Paths are repo-relative."""
+    git = partial(subprocess.run, capture_output=True, text=True, check=False)
+    top = git(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
+    if not top:
+        raise PrecedentError("Not inside a git repository. Give a change with --diff FILE, or pipe a diff in.")
+    new = git(["git", "-C", top, "ls-files", "--others", "--exclude-standard", "-z"]).stdout.split("\0")
+    added = (
+        f"+++ b/{p}\n" + "".join(f"+{line}\n" for line in (Path(top) / p).read_text(errors="replace").splitlines())
+        for p in new
+        if p
+    )
+    return git(["git", "-C", top, "diff", "HEAD"]).stdout + "".join(added)
 
 
 def run_hooks_install(args: argparse.Namespace) -> int:
@@ -112,20 +137,22 @@ def _hook(org: str) -> int:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="precedent")
     commands = parser.add_subparsers(dest="command", required=True)
-    ingest = commands.add_parser("ingest", help="read a folder of ADRs into the org's graph")
+    ingest = commands.add_parser("load", aliases=["ingest"], help="load a folder of decision files (ADRs)")
     ingest.add_argument("folder", type=folder)
-    ingest.add_argument("--org", type=org_name, required=True)
+    _org_option(ingest)
     ingest.add_argument("--no-ai", action="store_true", help="skip AI-read scopes (status and links only)")
     ingest.add_argument("--source", type=org_name, help="name this folder (e.g. platform) so ids don't collide")
     ingest.set_defaults(run=run_ingest)
     check = commands.add_parser("check", help="check a diff, or with --hook a Claude Code edit, against decisions")
-    check.add_argument("--org", type=org_name, required=True)
-    check.add_argument("--diff", default="-", help="unified diff file, or - for stdin (default)")
+    _org_option(check)
+    check.add_argument(
+        "--diff", help="a diff file, or - for stdin (default: what's piped in, else this repo's changes)"
+    )
     check.add_argument("--format", choices=["text", "json"], default="text")
     check.add_argument("--hook", action="store_true", help="read a Claude Code PreToolUse event from stdin")
     check.set_defaults(run=run_check)
     doctor = commands.add_parser("doctor", help="find lines in CLAUDE.md/AGENTS.md that contradict live decisions")
-    doctor.add_argument("--org", type=org_name, required=True)
+    _org_option(doctor)
     doctor.add_argument("--project", default=".", help="the repository to check (default: here)")
     doctor.add_argument("--no-ai", action="store_true", help="only flag lines that mention what a decision avoids")
     doctor.set_defaults(run=run_doctor)
@@ -133,12 +160,20 @@ def _parser() -> argparse.ArgumentParser:
         dest="action", required=True
     )
     install = hooks.add_parser("install", help="add the PreToolUse hook to .claude/settings.local.json")
-    install.add_argument("--org", type=org_name, required=True)
+    _org_option(install)
     where = install.add_mutually_exclusive_group()
     where.add_argument("--project", default=".", help="the repository to install into (default: here)")
     where.add_argument("--user", action="store_true", help="guard every repo you open (~/.claude/settings.json)")
     install.set_defaults(run=run_hooks_install)
     return parser
+
+
+def _org_option(command: argparse.ArgumentParser) -> None:
+    """One team needs no --org: it defaults to $PRECEDENT_ORG, else 'team'."""
+    default = os.environ.get("PRECEDENT_ORG", "team")
+    command.add_argument(
+        "--org", type=org_name, default=default, help=f"your team's set of decisions (default: {default})"
+    )
 
 
 def _url() -> str:

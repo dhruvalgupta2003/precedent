@@ -1,4 +1,8 @@
-# What it catches, and what it can't yet
+# What it can't do yet
+
+**In short:** Precedent finds libraries, names and files in new lines of JavaScript, TypeScript and Python code.
+It can't yet follow decisions that only apply in some places, or names built while the program runs. The details
+are below, for developers.
 
 What `precedent check` sees in a change. Measured by the `hard` eval suite (`evals/hard.jsonl`, adversarial, prod-like cases against Backstage's real ADRs).
 It reports, it doesn't gate: a miss there is information. Run `make eval` to see the current numbers.

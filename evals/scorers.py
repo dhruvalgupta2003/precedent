@@ -22,7 +22,7 @@ from precedent.core.grounding import grounded, keep_grounded
 from precedent.service import ScopeReader
 
 HERE = Path(__file__).parent
-ADRS = HERE / "fixtures" / "backstage"
+ADRS = HERE.parent / "examples" / "backstage"  # the same decisions the docs demo uses
 RECORDED = HERE / "fixtures" / "extract-cache"
 MODEL = os.environ.get("PRECEDENT_MODEL_EXTRACT", "openrouter:anthropic/claude-haiku-5.5")
 GRAPH = "test_eval_backstage"  # test_ prefix: the eval graph is disposable

@@ -2,7 +2,7 @@
 [project]
 site_name = "Precedent"
 site_url = "https://dhruvalgupta2003.github.io/precedent/"
-site_description = "Your team's decisions, checked before every change."
+site_description = "Keep your team's decisions from being undone: Precedent checks every change against them."
 repo_url = "https://github.com/dhruvalgupta2003/precedent"
 repo_name = "dhruvalgupta2003/precedent"
 edit_uri = "edit/main/docs/"
@@ -17,28 +17,29 @@ scenarios.md
 nav = [
   { "Home" = "index.md" },
   { "Get started" = [
-    { "Try it in 2 minutes" = "try.md" },
-    { "Set it up on your project" = "setup.md" },
+    { "1. How it works" = "concepts.md" },
+    { "2. See it in 2 minutes" = "try.md" },
+    { "3. Set it up for your team" = "setup.md" },
   ] },
   { "Guides" = [
-    { "Say what each decision covers" = "covers.md" },
-    { "Guard Claude Code" = "claude-code.md" },
-    { "Check pull requests in CI" = "ci.md" },
-    { "Find stale instructions" = "doctor.md" },
+    { "Tell it what to look for" = "covers.md" },
+    { "Use it with Claude Code" = "claude-code.md" },
+    { "Check every pull request" = "ci.md" },
+    { "Fix outdated AI instructions" = "doctor.md" },
   ] },
-  { "Reference" = [
-    { "Commands" = "reference/commands.md" },
-    { "precedent.yaml" = "reference/precedent-yaml.md" },
+  { "Help" = [
+    { "Common problems" = "troubleshooting.md" },
+    { "Words we use" = "glossary.md" },
+    { "All commands" = "reference/commands.md" },
+    { "The precedent.yaml file" = "reference/precedent-yaml.md" },
     { "Settings" = "reference/settings.md" },
-    { "Troubleshooting" = "troubleshooting.md" },
   ] },
-  { "How it works" = [
-    { "The ideas in plain words" = "concepts.md" },
+  { "About" = [
     { "Does it work?" = "evidence.md" },
     { "What it can't do yet" = "limits.md" },
+    { "Roadmap" = "roadmap.md" },
     { "Design decisions" = "adr/index.md" },
   ] },
-  { "Roadmap" = "roadmap.md" },
 ]
 
 [project.theme]
@@ -49,6 +50,7 @@ features = [
   "content.tabs.link",
   "navigation.footer",
   "navigation.instant",
+  "navigation.tabs",
   "navigation.path",
   "navigation.sections",
   "navigation.top",

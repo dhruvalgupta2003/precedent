@@ -1,0 +1,6 @@
+--- a/plugins/catalog/src/Badge.tsx
++++ b/plugins/catalog/src/Badge.tsx
+@@ -1,2 +1,3 @@
+ import React from 'react';
+-export const Badge = () => null;
++export const Badge: React.FunctionComponent = () => null;

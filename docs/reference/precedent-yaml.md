@@ -1,7 +1,7 @@
-# precedent.yaml
+# The precedent.yaml file
 
-An optional file in your ADR folder. It lists, for each ADR, the code that decision covers. People review it in pull
-requests, so Precedent may block on it. The decision behind this is [ADR0013](../adr/0013-reviewed-knowledge-in-precedent-yaml.md).
+An optional file in the folder with your decision notes. For each decision, it lists what to look for in the code.
+People review it in pull requests, so Precedent may stop a change that matches it. The decision behind this is [ADR0013](../adr/0013-reviewed-knowledge-in-precedent-yaml.md).
 
 ```yaml
 # docs/adr/precedent.yaml
@@ -32,9 +32,9 @@ The top level is ADR ids, exactly as Precedent names them (`ADR014` for `adr014-
 
 `kind` also accepts `config`, `component` and `feature_gate`. These match the value as plain text in the added lines.
 
-## What stops `ingest`
+## What stops `load`
 
-Precedent never uses half of a reviewed file. Each of these stops `precedent ingest` with a message that names the
+Precedent never uses half of a reviewed file. Each of these stops `precedent load` with a message that names the
 problem:
 
 | Mistake | Message starts with |

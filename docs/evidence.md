@@ -1,5 +1,9 @@
 # Does it work?
 
+**In short:** with an outdated note in the way, AI assistants followed the team's current decision 0 times out of 5
+without Precedent, and 5 times out of 5 with it. On real pull requests, it caught every real problem and raised no
+false alarms.
+
 Everything here can be rerun from the repo's [`evals/`](https://github.com/dhruvalgupta2003/precedent/tree/main/evals)
 folder.
 

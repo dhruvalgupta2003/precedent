@@ -1,17 +1,12 @@
-# Say what each decision covers
+# Tell it what to look for
 
-An ADR says "use Luxon for dates". To check code, Precedent needs to know which code that is: the `moment` package,
-`moment-timezone`, and so on. There are two ways to tell it, and you can use both.
+A decision note says something like "use Luxon for dates". To check code, Precedent also needs to know **what to
+look for**: the `moment` library, for example. You tell it in a short list called `precedent.yaml`.
 
-| | You write `precedent.yaml` | An AI reads your ADRs |
-|---|---|---|
-| Setup | a small file next to your ADRs | a model name and an API key |
-| Can it block a change? | yes, when the ADR is accepted | no, it can only warn |
-| Best for | names the ADR doesn't spell out: forks, add-ons, other names | a first pass over many ADRs |
+## Write the list
 
-## Way 1: write `precedent.yaml`
-
-Put it in the same folder as your ADRs. List, under each ADR id, the code that decision covers:
+Put `precedent.yaml` in the same folder as your decision notes. Under each decision's ID, add one entry per thing to
+look for:
 
 ```yaml
 ADR010:
@@ -26,59 +21,67 @@ ADR006:
     why: the long name of React.FC
 ```
 
-Short entries can also go on one line: `- {kind: package, value: moment, polarity: avoid, why: "we use Luxon"}`.
+Each entry has four lines:
 
-Review changes to this file in pull requests, like code. A person approved each line, so Precedent may block on it.
+| Line | What to write | Example |
+|---|---|---|
+| `kind` | what sort of thing to look for: a library (`package`), a name in the code (`symbol`), or a file or folder (`path`) | `package` |
+| `value` | its exact name | `moment-timezone` |
+| `polarity` | `avoid`: flag changes that add it. `prefer` or `require`: this is the right way. | `avoid` |
+| `why` | a short reason, shown to whoever is stopped | `an add-on that brings in Moment` |
 
-- **`kind`**: what to look for.
-    - `package`: imports (`import x from 'moment'`, `require('moment')`, `import moment` in Python) and manifest lines
-      (`package.json`, `requirements*.txt`).
-    - `symbol`: a name in code, like `React.FC`. It's also found through imports: `import { FC } from 'react'` and
-      `import * as R from 'react'` followed by `R.FC`.
-    - `path`: a file or folder, like `services/billing/` or `*.sql`.
-- **`polarity`**: what the decision says about it.
-    - `avoid`: flag any change that adds it.
-    - `prefer` or `require`: this is the recommended way. Precedent uses it to tell when old advice is out of date.
-- **`why`**: one line, shown to the agent and the reviewer. It is marked `(precedent.yaml)` so nobody mistakes it for
-  the ADR's own words.
+Short entries also fit on one line: `- {kind: package, value: moment, polarity: avoid, why: "we use Luxon"}`.
 
-Every entry needs exactly these four keys. A mistake stops `precedent ingest` with a message that names it. See the
-[full reference](reference/precedent-yaml.md).
+## Review it like code
 
-## Way 2: let an AI read your ADRs
+Changes to `precedent.yaml` should go through a pull request, so a teammate reads them. Because a person approved each
+line, Precedent is allowed to **stop** a change that matches it.
 
-Set a model and its key, then load your ADRs again:
+If an entry has a mistake, `precedent load` stops and says which entry to fix.
+[All the rules for this file](reference/precedent-yaml.md).
+
+## What each kind finds
+
+| Kind | It finds |
+|---|---|
+| `package` | `import x from 'moment'`, `require('moment')`, `import moment` in Python, and new lines in `package.json` or `requirements.txt` |
+| `symbol` | the name in the code, like `React.FC`, including `import { FC } from 'react'` |
+| `path` | changes to a file or folder, like `services/billing/` or `*.sql` |
+
+## Or let an AI suggest it
+
+An AI can read your decision notes and work out what to look for. Set a model and its key, then load again:
 
 ```sh
 export PRECEDENT_MODEL_EXTRACT=anthropic:claude-haiku-5-5
 export ANTHROPIC_API_KEY=...
-precedent ingest docs/adr --org myteam
+precedent load docs/adr
 ```
+
+<div class="pc-terminal" markdown>
 
 ```text
-myteam: 3 written, 9 unchanged
-AI read 14 scopes; dropped 1 (quote not in the source, or not code); 0 failed
+Loaded 12 decisions into 'team': 3 new or changed, 9 already up to date.
+The AI found 14 things to look for; skipped 1 it couldn't quote word for word; 0 files failed.
 ```
 
-- Any [Pydantic AI model](https://ai.pydantic.dev/models/) works, for example `openai:...` or `openrouter:...`.
-- Each answer must quote the ADR word for word and look like code, or it is dropped. The ADR text is treated as data,
-  never as instructions.
-- Answers are cached on your machine, so loading the same ADRs again costs nothing.
-- AI findings only **warn**. An AI can misread a sentence, and a wrong block would stop real work.
+</div>
 
-## When both say the same thing
+- What the AI finds can only say **⚠️ take a look**, never **🛑 stop**, because an AI can misread a sentence.
+- It must quote your note word for word, or its answer is thrown away.
+- Answers are saved on your computer, so loading the same notes again is free.
+- Any [Pydantic AI model](https://ai.pydantic.dev/models/) works, such as `openai:...` or `openrouter:...`.
 
-If `precedent.yaml` and the AI both list the same package with the same polarity, the `precedent.yaml` entry wins. It
-stays a reviewed entry, so it can still block.
+If `precedent.yaml` and the AI list the same thing, the `precedent.yaml` entry wins, so it can still stop a change.
 
-## When a change is blocked, warned or cleared
+## When each answer is given
 
-| The change matches… | Result |
+| The change… | Answer |
 |---|---|
-| an `avoid` entry in `precedent.yaml`, on an accepted ADR | <span class="pc-block">BLOCK</span> |
-| an `avoid` the AI read from an accepted ADR | <span class="pc-warn">WARN</span> |
-| an `avoid` on a proposed ADR (not accepted yet) | <span class="pc-warn">WARN</span> |
-| a `prefer` or `require` of a decision that was replaced | <span class="pc-warn">WARN</span>: that advice is out of date |
-| nothing, or only replaced, rejected or deprecated decisions | <span class="pc-clear">CLEAR</span> |
+| adds something an accepted decision avoids, listed in `precedent.yaml` | 🛑 Stop (`BLOCK`) |
+| adds something the AI found an accepted decision avoids | ⚠️ Take a look (`WARN`) |
+| adds something a decision avoids, but the decision is only proposed (not accepted yet) | ⚠️ Take a look (`WARN`) |
+| follows advice from a decision that was replaced | ⚠️ Take a look (`WARN`): the advice is out of date |
+| none of the above | ✅ All good (`CLEAR`) |
 
-A replaced decision never blocks. The rule behind this table is [ADR0004](adr/0004-only-confirmed-decisions-block.md).
+A replaced decision never stops anything. The rule behind this table is [ADR0004](adr/0004-only-confirmed-decisions-block.md).

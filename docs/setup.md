@@ -1,63 +1,52 @@
-# Set it up on your project
+# Set it up for your team
 
-Four steps. Each one takes a minute.
+This page is for the person who sets Precedent up, usually a developer. It takes about 10 minutes. You'll need the
+tools from [See it in 2 minutes](try.md#before-you-start).
+
+<div class="pc-flow" markdown>
+<div class="pc-step" markdown><span class="pc-num">1</span>**Install**</div>
+<div class="pc-arrow">→</div>
+<div class="pc-step" markdown><span class="pc-num">2</span>**Write a decision**</div>
+<div class="pc-arrow">→</div>
+<div class="pc-step" markdown><span class="pc-num">3</span>**Say what to look for**</div>
+<div class="pc-arrow">→</div>
+<div class="pc-step" markdown><span class="pc-num">4</span>**Load and check**</div>
+</div>
 
 ## 1. Install
 
 ```sh
-uv tool install git+https://github.com/dhruvalgupta2003/precedent@v0.2.0
+uv tool install git+https://github.com/dhruvalgupta2003/precedent
 docker run -d --name precedent-db -p 6380:6379 falkordb/falkordb:6.0.4
 ```
 
-The first line installs the `precedent` command. The second starts the database on `localhost:6380`. If you ran
-`docker compose up -d` in the [2-minute demo](try.md), skip the second line: it's the same database.
+The first line installs the `precedent` command. The second starts the database. If you ran the 2-minute demo and
+its database is still running, skip the second line.
 
-## 2. Load your decisions
+## 2. Write a decision
 
-Point Precedent at the folder where your team keeps its decision files (ADRs):
+Do you already keep decision notes (ADRs) in a folder like `docs/adr/`? Then skip to step 3.
 
-```sh
-precedent ingest docs/adr --org myteam
+If not, create your first one. Save this as `docs/adr/0001-use-built-in-fetch.md` in your project:
+
+```markdown
+# 1. Use the built-in fetch
+
+## Status
+
+Accepted
+
+## Decision
+
+Use the built-in `fetch`. Do not add `node-fetch`.
 ```
 
-```text
-myteam: 12 written, 0 unchanged
-```
+The number at the start of the file name is the decision's ID: `ADR0001`. The **Status** says whether it counts:
+`Accepted` means yes.
 
-Run it again whenever ADRs change. Files that didn't change are skipped.
+## 3. Say what to look for
 
-??? question "No ADRs yet? Write your first one"
-
-    An ADR is a short Markdown file. Save this as `docs/adr/0001-use-built-in-fetch.md`:
-
-    ```markdown
-    # 1. Use the built-in fetch
-
-    ## Status
-
-    Accepted
-
-    ## Decision
-
-    Use the built-in `fetch`. Do not add `node-fetch`.
-    ```
-
-    The number in the file name becomes its id: `ADR0001`.
-
-??? info "Decisions in more than one folder?"
-
-    For example, a central platform repo plus each team's own ADRs. Load each folder into the same `--org`, and give
-    each one a name with `--source`, so two files that are both `ADR001` don't clash:
-
-    ```sh
-    precedent ingest ../platform/docs/adr --org myteam --source platform
-    precedent ingest docs/adr --org myteam --source web
-    ```
-
-## 3. Say what code each decision covers
-
-Precedent can only catch a change if it knows that, say, ADR0001 is about `node-fetch`. Put a `precedent.yaml` in the
-same folder as your ADRs:
+Precedent needs to know what this decision means in code. Save this as `docs/adr/precedent.yaml`, in the same folder:
 
 ```yaml
 ADR0001:
@@ -67,29 +56,49 @@ ADR0001:
     why: we use the built-in fetch
 ```
 
-Then load the folder again:
+In plain words: "for ADR0001, look for the library (`package`) called `node-fetch`; changes should `avoid` it,
+because we use the built-in fetch." [More about this file](covers.md).
+
+## 4. Load and check
+
+Load your decisions:
 
 ```sh
-precedent ingest docs/adr --org myteam
+precedent load docs/adr
 ```
 
-Or let an AI read it from your ADRs. [Say what each decision covers](covers.md) explains both ways.
+<div class="pc-terminal" markdown>
 
-## 4. Check a change
+```text
+Loaded 1 decision into 'team': 1 new or changed, 0 already up to date.
+```
+
+</div>
+
+Now try it. In a code file, like `src/index.ts`, add the line `import fetch from 'node-fetch';`, then run:
 
 ```sh
-git diff main | precedent check --org myteam
+precedent check
 ```
+
+<div class="pc-terminal" markdown>
 
 ```text
 Precedent BLOCK: this change touches decisions the team recorded.
-- myteam/ADR0001 says avoid node-fetch: "we use the built-in fetch (precedent.yaml)" (docs/adr/0001-use-built-in-fetch.md)
+- team/ADR0001 says avoid node-fetch: "we use the built-in fetch (precedent.yaml)" (docs/adr/0001-use-built-in-fetch.md)
 ```
 
-The exit code tells scripts what happened: `0` CLEAR, `1` WARN, `2` BLOCK.
+</div>
 
-## Next
+With nothing after it, `precedent check` looks at the changes in your project that aren't committed yet, including
+new files. Remove the test line when you're done.
 
-- [Guard Claude Code](claude-code.md): check every edit before it happens.
-- [Check pull requests in CI](ci.md): fail a PR that goes against a decision.
-- [Find stale instructions](doctor.md): fix the lines in CLAUDE.md that caused the problem.
+Whenever you add or change a decision note, run `precedent load docs/adr` again.
+
+## Next: turn it on where your team works
+
+| Where | Guide |
+|---|---|
+| In Claude Code, before every edit | [Use it with Claude Code](claude-code.md) |
+| On every pull request | [Check every pull request](ci.md) |
+| In old notes for AI assistants | [Fix outdated AI instructions](doctor.md) |
