@@ -53,6 +53,9 @@ def run_ingest(args: argparse.Namespace) -> int:
     total = report.written + report.unchanged
     news = f"{report.written} new or changed, {report.unchanged} already up to date"
     print(f"Loaded {total} decision{'' if total == 1 else 's'} into {args.org!r}: {news}.")
+    if report.found:
+        found = f"Found {report.found} more in other documents"
+        print(f"{found}. They are proposed: they can warn, but not stop a change, until someone accepts them.")
     if reader:
         skipped = f"skipped {report.dropped} it couldn't quote word for word"
         print(f"The AI found {report.scopes} things to look for; {skipped}; {report.failed} files failed.")
@@ -137,7 +140,9 @@ def _hook(org: str) -> int:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="precedent")
     commands = parser.add_subparsers(dest="command", required=True)
-    ingest = commands.add_parser("load", aliases=["ingest"], help="load a folder of decision files (ADRs)")
+    ingest = commands.add_parser(
+        "load", aliases=["ingest"], help="load decisions from any folder: ADRs, and decisions marked in other Markdown"
+    )
     ingest.add_argument("folder", type=folder)
     _org_option(ingest)
     ingest.add_argument("--no-ai", action="store_true", help="skip AI-read scopes (status and links only)")

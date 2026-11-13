@@ -27,6 +27,9 @@ its database is still running, skip the second line.
 
 Do you already keep decision notes (ADRs) in a folder like `docs/adr/`? Then skip to step 3.
 
+Are your decisions written in other docs, like a README or design notes? You can also
+[load the whole project](any-folder.md) with `precedent load .`.
+
 If not, create your first one. Save this as `docs/adr/0001-use-built-in-fetch.md` in your project:
 
 ```markdown

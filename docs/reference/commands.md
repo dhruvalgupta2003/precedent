@@ -5,8 +5,9 @@ Every command works on one set of decisions, named with `--org`. If you have one
 
 ## `precedent load FOLDER`
 
-Reads the decision notes (ADRs) in `FOLDER`, and `FOLDER/precedent.yaml` if it's there. Also works as
-`precedent ingest`.
+Reads any folder, including subfolders: decision notes (ADRs) wherever they are, with each folder's
+`precedent.yaml`, and decisions clearly marked in other Markdown files. Skips ignored, build and hidden folders and
+AI instruction files. [Load any folder](../any-folder.md) explains it. Also works as `precedent ingest`.
 
 | Option | What it does |
 |---|---|

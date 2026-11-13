@@ -17,15 +17,17 @@ from precedent.core.errors import KnowledgeError
 from precedent.core.grounding import looks_like_code
 from precedent.core.model import DecisionRecord, Scope, SourceRef, Status, normalise_status
 
-ADR_FILE = re.compile(r"(?:adr)?(\d{3,4})-[\w.-]+\.md")
+ADR_FILE = re.compile(r"(?:adr[-_]?)?(\d{3,4})[-_][\w.-]+\.md", re.IGNORECASE)
 COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+FENCE = re.compile(r"^(```|~~~).*?^\1", re.MULTILINE | re.DOTALL)  # an example inside a code block isn't content
 NOTE = re.compile(r":::note\[Superseded\](.*?):::", re.DOTALL | re.IGNORECASE)
 STATUS_SECTION = re.compile(r"^##\s+Status\s*$(.*?)(?=^#|\Z)", re.MULTILINE | re.DOTALL | re.IGNORECASE)
 HEADING = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 DECISION_SECTION = re.compile(r"^##\s+Decision\s*$(.*?)(?=^#|\Z)", re.MULTILINE | re.DOTALL | re.IGNORECASE)
 KNOWLEDGE_FILE = "precedent.yaml"
 FIELDS = {"kind", "value", "polarity", "why"}
-LINK = re.compile(r"\]\((?:\./)?(?:adr)?(\d{3,4})-[^)]*\.md\)")
+FRONT_MATTER_PARTS = 3  # before, inside and after the front matter
+LINK = re.compile(r"\]\((?:\./)?(?:adr[-_]?)?(\d{3,4})[-_][^)]*\.md\)", re.IGNORECASE)
 REF = re.compile(r"(?:ADR-?)?(\d{3,4})", re.IGNORECASE)
 
 
@@ -46,11 +48,7 @@ def records(folder: str, org: str, source: str | None = None) -> Iterator[Decisi
     `source` names the folder (e.g. "platform") so two folders that both start at ADR001 don't collide.
     """
     prefix = f"{org}/{source}" if source else org
-    adrs = [
-        _parse(path, f"ADR{match[1]}")
-        for path in sorted(Path(folder).glob("*.md"))
-        if (match := ADR_FILE.fullmatch(path.name)) and "template" not in path.name
-    ]
+    adrs = [_parse(path, adr_id) for path in sorted(Path(folder).glob("*.md")) if (adr_id := adr_id_of(path))]
     known = {a.id for a in adrs}
     declared = _knowledge(Path(folder) / KNOWLEDGE_FILE, {a.id for a in adrs})
     # A link can be stated by either side; the graph stores it once, on the newer ADR.
@@ -73,6 +71,32 @@ def records(folder: str, org: str, source: str | None = None) -> Iterator[Decisi
             scopes=tuple(declared.get(a.id, ())),
             sources=(SourceRef(url=str(a.path), kind="adr"),),
         )
+
+
+def adr_id_of(path: Path) -> str | None:
+    """The id if this note is ADR-shaped (ADR0014), else None.
+
+    A numbered name counts only with ADR structure (a status, a Decision section, or "ADR" in the title), so a dated
+    note like 2024-01-15-standup.md is not a decision. An unnumbered note with a Status and a Decision section is.
+    """
+    if "template" in path.name.lower():
+        return None
+    meta, body = _split(read(path))
+    body = FENCE.sub("", COMMENT.sub("", body))
+    title = str(meta.get("title") or next(iter(HEADING.findall(body)), ""))
+    has_status = bool(meta.get("status") or STATUS_SECTION.search(body))
+    has_decision = bool(DECISION_SECTION.search(body))
+    if (match := ADR_FILE.fullmatch(path.name)) and (has_status or has_decision or "adr" in title.lower()):
+        return f"ADR{match[1]}"
+    return slug(path.stem) if has_status and has_decision else None
+
+
+def slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "x"
+
+
+def read(path: Path) -> str:
+    return path.read_text(errors="replace")
 
 
 def _knowledge(path: Path, known: set[str]) -> dict[str, list[Scope]]:
@@ -135,11 +159,11 @@ def _declared(adr_id: str, entry: object) -> Scope:
 
 def text(path: Path) -> str:
     """The ADR as an LLM may see it: the body without front matter or HTML comments, so hidden text can't steer it."""
-    return COMMENT.sub("", _split(path.read_text())[1]).strip()
+    return COMMENT.sub("", _split(read(path))[1]).strip()
 
 
 def _parse(path: Path, adr_id: str) -> Parsed:
-    meta, body = _split(path.read_text())
+    meta, body = _split(read(path))
     body = COMMENT.sub("", body)
     title = str(meta.get("title") or next(iter(HEADING.findall(body)), path.stem))
     declared = str(meta.get("status") or "") or _status_section(body)
@@ -158,11 +182,15 @@ def _statement(body: str) -> str:
 
 
 def _split(text: str) -> tuple[dict, str]:
-    """Front matter and body; files without front matter (Nygard) are all body."""
-    if not text.startswith("---"):
+    """Front matter and body. Without front matter (Nygard), or when the opening `---` is just a rule, it's all body."""
+    parts = text.split("---", 2)
+    if not text.startswith("---") or len(parts) < FRONT_MATTER_PARTS:
         return {}, text
-    _, front_matter, body = text.split("---", 2)
-    return yaml.safe_load(front_matter) or {}, body
+    try:
+        meta = yaml.safe_load(parts[1])
+    except yaml.YAMLError:
+        return {}, text
+    return (meta or {}, parts[2]) if meta is None or isinstance(meta, dict) else ({}, text)
 
 
 def _status_section(body: str) -> str:
