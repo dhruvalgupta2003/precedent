@@ -138,7 +138,7 @@ WHERE a.invalid_at IS NULL
 OPTIONAL MATCH (newer:Decision)-[:SUPERSEDES]->(d)
 OPTIONAL MATCH (d)-[:CITES]->(doc:Source)
 RETURN d.id, d.title, d.status, d.tier, d.confirmed, d.needs_review, s.kind, s.value, a.polarity, a.quote,
-       a.extracted, a.unless, collect(DISTINCT newer.id), collect(DISTINCT doc.url)
+       a.extracted, a.unless, collect(DISTINCT newer.id), collect(DISTINCT doc.url), d.decided_at
 """
 
 
@@ -163,6 +163,7 @@ def _rule(row: list) -> Rule:
         unless,
         newer,
         urls,
+        decided_at,
     ) = row
     scope = {
         "kind": kind,
@@ -183,5 +184,6 @@ def _rule(row: list) -> Rule:
             "scope": scope,
             "superseded_by": sorted(newer),
             "source": min(urls, default=None),
+            "decided_at": decided_at or None,
         }
     )

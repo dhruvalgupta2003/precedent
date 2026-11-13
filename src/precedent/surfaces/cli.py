@@ -15,6 +15,7 @@ from falkordb import Graph
 from precedent import service
 from precedent.core.diff import changes
 from precedent.core.errors import PrecedentError
+from precedent.surfaces.explain import as_json, explain
 from precedent.surfaces.hook import change_from_tool, describe, response
 
 EXIT = {"CLEAR": 0, "WARN": 1, "BLOCK": 2}  # spec §9: CI-friendly
@@ -116,6 +117,13 @@ def run_hooks_install(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_why(args: argparse.Namespace) -> int:
+    """Which decision about something wins, and why (ADR0018). Ends with 1 when no decision is about it."""
+    ranked = service.why(_graph(args.org), args.name)
+    print(json.dumps(as_json(args.name, ranked), indent=2) if args.format == "json" else explain(args.name, ranked))
+    return 0 if ranked else 1
+
+
 def run_doctor(args: argparse.Namespace) -> int:
     """Instruction-file lines (CLAUDE.md, AGENTS.md, …) that contradict a live decision. Exit 1 if any (CI)."""
     reader = None if args.no_ai else service.default_scope_reader("instructions", _model(args))
@@ -176,6 +184,7 @@ def _parser() -> argparse.ArgumentParser:
     check.add_argument("--format", choices=["text", "json"], default="text")
     check.add_argument("--hook", action="store_true", help="read a Claude Code PreToolUse event from stdin")
     check.set_defaults(run=run_check)
+    _why_command(commands)
     doctor = commands.add_parser("doctor", help="find lines in CLAUDE.md/AGENTS.md that contradict live decisions")
     _org_option(doctor)
     doctor.add_argument("--project", default=".", help="the repository to check (default: here)")
@@ -191,6 +200,14 @@ def _parser() -> argparse.ArgumentParser:
     where.add_argument("--user", action="store_true", help="guard every repo you open (~/.claude/settings.json)")
     install.set_defaults(run=run_hooks_install)
     return parser
+
+
+def _why_command(commands: argparse._SubParsersAction) -> None:
+    why = commands.add_parser("why", help="which decision about something wins, and why")
+    why.add_argument("name", help="a package, code name or path, for example moment")
+    _org_option(why)
+    why.add_argument("--format", choices=["text", "json"], default="text")
+    why.set_defaults(run=run_why)
 
 
 def _ai_options(command: argparse.ArgumentParser, no_ai: str) -> None:

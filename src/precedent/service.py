@@ -18,6 +18,7 @@ from precedent.adapters.falkor import (
     save_decision,
 )
 from precedent.connectors import adr, folder
+from precedent.core.authority import Standing, resolve
 from precedent.core.diff import Change, facts
 from precedent.core.doctor import StaleLine, mentions, stale_lines
 from precedent.core.errors import ExtractionError
@@ -153,6 +154,18 @@ def _lines(root: Path, path: str) -> tuple[str, ...]:
         return tuple(file.read_text(errors="replace").splitlines())
     except (OSError, ValueError):
         return ()
+
+
+ORDER = {"wins": 0, "disputed": 0, "outranked": 1, "replaced": 2, "retired": 3}
+
+
+def why(graph: Graph, name: str) -> dict[tuple[str, str], list[Standing]]:
+    """Every decision about `name` (a package, a symbol, a path…), the one that wins first, each with its reason."""
+    ranked = resolve(r for r in rules(graph) if r.scope.value.lower() == name.lower())
+    return {
+        thing: sorted(standings, key=lambda s: (ORDER[s.outcome], s.rule.decision))
+        for thing, standings in ranked.items()
+    }
 
 
 def preflight(graph: Graph, changes: list[Change]) -> Report:

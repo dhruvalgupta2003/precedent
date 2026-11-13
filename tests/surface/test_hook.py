@@ -7,7 +7,7 @@ import pytest
 from precedent.core.diff import Change
 from precedent.core.model import Scope
 from precedent.core.preflight import Finding, Report
-from precedent.surfaces.hook import change_from_tool, describe, response
+from precedent.surfaces.hook import change_from_tool, describe, for_agent, response
 
 AVOID = Scope(kind="package", value="node-fetch", polarity="avoid", quote="move away from node-fetch", extracted=True)
 FINDING = Finding(
@@ -119,3 +119,22 @@ def test_the_hook_does_not_load_the_ai_library():
     """The hook runs on every edit; loading pydantic_ai would add ~0.35 s to each one, and the hook never uses it."""
     code = "import sys, precedent.surfaces.cli; sys.exit('pydantic_ai' in sys.modules)"
     assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0  # noqa: S603 (our own code)
+
+
+def test_a_disagreement_tells_the_agent_to_ask_the_user_not_to_pick_one():
+    """E1 showed agents act on how a message is worded: with no settled decision, it must not say 'revise'."""
+    scope = Scope(kind="package", value="axios", polarity="avoid", quote="do not add axios")
+    finding = Finding(
+        kind="disagreement",
+        decision="team/ADR3",
+        scope=scope,
+        message="team/ADR3 (avoid axios) and team/ADR9 (prefer axios) disagree, and neither replaces the other",
+        disputed_with=("team/ADR9",),
+    )
+
+    text = for_agent(Report(verdict="WARN", findings=(finding,)))
+
+    assert "team/ADR3" in text
+    assert "team/ADR9" in text
+    assert "Ask the user" in text
+    assert "revise this change" not in text

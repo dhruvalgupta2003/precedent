@@ -36,6 +36,18 @@ your project's uncommitted changes and new files.
 Ends with `0` all good (CLEAR), `1` take a look (WARN), `2` stop (BLOCK). With `--hook` it always ends with `0`
 and answers in Claude Code's format.
 
+## `precedent why NAME`
+
+Shows every decision about something (a library, a name in the code, a folder), which one wins, and why. For
+example, `precedent why moment`. [Which rule wins](../concepts.md#which-rule-wins) explains the order.
+
+| Option | What it does |
+|---|---|
+| `--format text\|json` | `text` for people (default), `json` for other tools |
+| `--org NAME` | which set of decisions to use (default: `team`) |
+
+Ends with `0` when a decision is about it, `1` when none is.
+
 ## `precedent doctor`
 
 Finds lines in AI instruction files (`CLAUDE.md`, `AGENTS.md`, Cursor and Copilot rules) that go against a current

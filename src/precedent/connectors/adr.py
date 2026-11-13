@@ -7,6 +7,7 @@ marker and `:::note[Superseded]` block. Other text, including instructions aimed
 
 import re
 from collections.abc import Iterator
+from datetime import date
 from pathlib import Path
 from typing import NamedTuple
 
@@ -31,6 +32,7 @@ FIELDS = {"kind", "value", "polarity", "why"}
 FRONT_MATTER_PARTS = 3  # before, inside and after the front matter
 LINK = re.compile(r"\]\((?:\./)?(?:adr[-_]?)?(\d{3,4})[-_][^)]*\.md\)", re.IGNORECASE)
 REF = re.compile(r"(?:ADR-?)?(\d{3,4})", re.IGNORECASE)
+DATE_LINE = re.compile(r"^[ \t>*-]*Date:[ \t]*(\d{4}-\d{2}-\d{2})\b", re.IGNORECASE | re.MULTILINE)  # adr-tools, MADR
 
 
 class Parsed(NamedTuple):
@@ -42,6 +44,7 @@ class Parsed(NamedTuple):
     needs_review: bool
     supersedes: list[str]  # ids this ADR says it replaces
     successors: list[str]  # ids this ADR says replace it
+    decided_at: date | None = None
 
 
 def records(folder: str, org: str, source: str | None = None) -> Iterator[DecisionRecord]:
@@ -72,6 +75,7 @@ def records(folder: str, org: str, source: str | None = None) -> Iterator[Decisi
             unresolved=tuple(i for i in dict.fromkeys(a.supersedes + a.successors) if i not in known),
             scopes=tuple(declared.get(a.id, ())),
             sources=(SourceRef(url=str(a.path), kind="adr"),),
+            decided_at=a.decided_at,
         )
 
 
@@ -173,7 +177,16 @@ def _parse(path: Path, adr_id: str) -> Parsed:
     status, flagged = _status(declared, title, noted=bool(note))
     successors = _links(declared, "superseded by") + [f"ADR{n}" for n in LINK.findall(note[1] if note else "")]
     supersedes = _links(declared, "supersedes") + _refs(meta.get("supersedes"))
-    return Parsed(adr_id, path, title, _statement(body), status, flagged, supersedes, successors)
+    return Parsed(adr_id, path, title, _statement(body), status, flagged, supersedes, successors, _date(meta, body))
+
+
+def _date(meta: dict, body: str) -> date | None:
+    """When the decision was made: front matter `date:`, or a `Date: 2026-03-02` line. A date it can't read is none."""
+    found = str(meta.get("date") or "") or (m[1] if (m := DATE_LINE.search(body)) else "")
+    try:
+        return date.fromisoformat(found[:10]) if found else None
+    except ValueError:
+        return None
 
 
 def _statement(body: str) -> str:
@@ -183,13 +196,23 @@ def _statement(body: str) -> str:
     return " ".join(first.split())
 
 
+class _TextDates(yaml.SafeLoader):
+    """Safe YAML that leaves dates as text: an impossible one (2026-13-40) then costs only the date, not the note."""
+
+
+_TextDates.yaml_implicit_resolvers = {
+    first: [(tag, pattern) for tag, pattern in resolvers if tag != "tag:yaml.org,2002:timestamp"]
+    for first, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
+}
+
+
 def _split(text: str) -> tuple[dict, str]:
     """Front matter and body. Without front matter (Nygard), or when the opening `---` is just a rule, it's all body."""
     parts = text.split("---", 2)
     if not text.startswith("---") or len(parts) < FRONT_MATTER_PARTS:
         return {}, text
     try:
-        meta = yaml.safe_load(parts[1])
+        meta = yaml.load(parts[1], Loader=_TextDates)  # noqa: S506 (a SafeLoader that keeps dates as text)
     except yaml.YAMLError:
         return {}, text
     return (meta or {}, parts[2]) if meta is None or isinstance(meta, dict) else ({}, text)
