@@ -85,6 +85,11 @@ SET d.status = 'deprecated', d.hash = null
 FOUND_URLS = (
     "MATCH (d:Decision)-[:CITES]->(s:Source {kind: 'doc'}) WHERE d.id STARTS WITH $prefix RETURN DISTINCT s.url"
 )
+FOUND_QUOTES = """
+MATCH (d:Decision)-[c:CITES]->(s:Source {kind: 'doc'})
+WHERE d.id STARTS WITH $prefix AND s.url IN $urls AND d.status <> 'deprecated'
+RETURN d.id, s.url, c.quote
+"""
 DECISION_PROPS = {
     "title",
     "statement",
@@ -101,6 +106,11 @@ DECISION_PROPS = {
 def found_urls(graph: Graph, prefix: str) -> list[str]:
     """Documents that decisions under `prefix` ("org/" or "org/source/") were found in."""
     return [row[0] for row in graph.query(FOUND_URLS, {"prefix": prefix}).result_set]
+
+
+def found_quotes(graph: Graph, prefix: str, urls: list[str]) -> list[tuple[str, str, str]]:
+    """(id, document, quote) of each live decision under `prefix` found in one of these documents."""
+    return [tuple(row) for row in graph.query(FOUND_QUOTES, {"prefix": prefix, "urls": urls}).result_set]
 
 
 def retire_found(graph: Graph, prefix: str, urls: list[str], kept: list[str]) -> None:

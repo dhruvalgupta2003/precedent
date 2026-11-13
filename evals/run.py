@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from scorers import score_extraction, score_preflight, score_safety
+from scorers import score_extraction, score_found, score_preflight, score_safety
 
 HERE = Path(__file__).parent
 RESULTS = HERE.parent / ".cache" / "evals"
@@ -60,13 +60,14 @@ SCORERS: dict[str, Scorer] = {
     "preflight": score_preflight,
     "why": _not_built,
     "extraction": score_extraction,
+    "found": score_found,  # decisions an AI finds in ordinary documents (ADR0014)
     "safety": score_safety,
     "session_capture": _not_built,
     "hard": score_preflight,  # adversarial, prod-like pre-flight cases: maps limits, never gates
 }
 
 # Minimum pass rate per suite over the cases that ran (spec §11b; finer metrics join their scorers).
-MIN_PASS = {"preflight": 0.9, "why": 0.95, "extraction": 0.85, "safety": 1.0, "session_capture": 0.8}
+MIN_PASS = {"preflight": 0.9, "why": 0.95, "extraction": 0.85, "found": 0.85, "safety": 1.0, "session_capture": 0.8}
 REPORT_ONLY = {"hard"}  # suites that show where Precedent stands; a miss there is information, not a regression
 
 

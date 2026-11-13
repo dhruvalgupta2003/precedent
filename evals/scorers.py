@@ -16,9 +16,10 @@ from falkordb import FalkorDB, Graph
 
 from precedent import service
 from precedent.adapters.falkor import connect
-from precedent.adapters.llm import scope_reader
+from precedent.adapters.llm import Kind, scope_reader
 from precedent.connectors import adr
 from precedent.core.diff import changes
+from precedent.core.errors import ExtractionError
 from precedent.core.grounding import grounded, keep_grounded
 from precedent.service import ScopeReader
 
@@ -32,8 +33,8 @@ Case = dict[str, Any]
 
 
 @cache
-def reader() -> ScopeReader:
-    return scope_reader(MODEL, RECORDED, offline=os.environ.get("PRECEDENT_EVAL_RECORD") != "1")
+def reader(kind: Kind = "adr") -> ScopeReader:
+    return scope_reader(MODEL, RECORDED, kind, offline=os.environ.get("PRECEDENT_EVAL_RECORD") != "1")
 
 
 @cache
@@ -46,7 +47,7 @@ def backstage() -> Graph:
     if GRAPH in db.list_graphs():
         db.select_graph(GRAPH).delete()
     graph = db.select_graph(GRAPH)
-    service.ingest(graph, str(ADRS), "backstage", reader())
+    service.ingest(graph, str(ADRS), "backstage", service.Readers(adrs=reader()))
     return graph
 
 
@@ -77,6 +78,22 @@ def score_extraction(case: Case) -> tuple[bool, Any]:
     checks += [not _has(got, s) for s in expected.get("scopes_forbidden", [])]
     quotes = [record.statement, *(s.quote or "" for s in scopes)]  # all verbatim from the ADR
     checks += [any(grounded(q, quote) for quote in quotes) for q in expected.get("quotes_required", [])]
+    return all(checks), sorted(got)
+
+
+def score_found(case: Case) -> tuple[bool, Any]:
+    """Decisions an AI finds in an ordinary document (ADR0014): only decisions already made, quoted word for word."""
+    text, expected = case["input"]["document"], case["expected"]
+    try:
+        scopes = keep_grounded(reader("docs")(text), text)
+    except ExtractionError as exc:
+        if "not recorded" in str(exc):
+            raise NotImplementedError from exc  # pending until a real model's answer is recorded
+        raise
+    got = {(s.kind, s.value, _stance(s.polarity)) for s in scopes if s.polarity != "applies"}
+    checks = [_has(got, s) for s in expected.get("scopes_required", [])]
+    checks += [not _has(got, s) for s in expected.get("scopes_forbidden", [])]
+    checks += [not got] if expected.get("none") else []
     return all(checks), sorted(got)
 
 

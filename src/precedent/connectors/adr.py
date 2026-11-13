@@ -19,7 +19,9 @@ from precedent.core.model import DecisionRecord, Scope, SourceRef, Status, norma
 
 ADR_FILE = re.compile(r"(?:adr[-_]?)?(\d{3,4})[-_][\w.-]+\.md", re.IGNORECASE)
 COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-FENCE = re.compile(r"^(```|~~~).*?^\1", re.MULTILINE | re.DOTALL)  # an example inside a code block isn't content
+FENCE = re.compile(
+    r"^[ \t]*(```|~~~).*?^[ \t]*\1", re.MULTILINE | re.DOTALL
+)  # an example inside a code block isn't content
 NOTE = re.compile(r":::note\[Superseded\](.*?):::", re.DOTALL | re.IGNORECASE)
 STATUS_SECTION = re.compile(r"^##\s+Status\s*$(.*?)(?=^#|\Z)", re.MULTILINE | re.DOTALL | re.IGNORECASE)
 HEADING = re.compile(r"^#\s+(.+)$", re.MULTILINE)

@@ -90,14 +90,46 @@ def found_in(doc: Path, root: Path, prefix: str) -> list[DecisionRecord]:
     Without AI, a "we decided" sentence counts only if it names something checkable in backticks: prose without code
     is the AI finder's job.
     """
-    body = adr.FENCE.sub("", adr.text(doc))  # an example inside a code block is not a decision
-    name = adr.slug(doc.relative_to(root).with_suffix("").as_posix())
+    name = _name(doc, root)
     found = []
-    for quote, needs_code in _quotes(body):
+    for quote, needs_code in _quotes(body(doc)):
         record = _record(quote, doc, f"{prefix}/{name}", prefix)
         if len(WORD.findall(quote)) >= MIN_WORDS and (record.scopes or not needs_code):
             found.append(record)
     return found
+
+
+def from_scopes(doc: Path, root: Path, prefix: str, scopes: list[Scope]) -> list[DecisionRecord]:
+    """Decisions an AI read in a document (ADR0014): one per quote, with the stances it states. The scopes must
+    already be grounded in `body(doc)`; like every found decision, these are proposed and may only warn."""
+    by_quote: dict[str, list[Scope]] = {}
+    for scope in scopes:
+        by_quote.setdefault(" ".join((scope.quote or "").split()), []).append(scope)
+    records = (
+        _record(quote, doc, f"{prefix}/{_name(doc, root)}", prefix).model_copy(update={"scopes": tuple(found)})
+        for quote, found in by_quote.items()
+        if len(WORD.findall(quote)) >= MIN_WORDS
+    )
+    return list(records)
+
+
+def merge(records: list[DecisionRecord]) -> list[DecisionRecord]:
+    """One decision per id: the rules and the AI finding the same sentence add their stances to one record."""
+    merged: dict[str, DecisionRecord] = {}
+    for record in records:
+        first = merged.get(record.id, record)
+        stances = {(s.kind, s.value, s.polarity): s for s in record.scopes + first.scopes}
+        merged[record.id] = first.model_copy(update={"scopes": tuple(stances.values())})
+    return list(merged.values())
+
+
+def body(doc: Path) -> str:
+    """The document's text without code blocks: an example inside a code block is not a decision."""
+    return adr.FENCE.sub("", adr.text(doc))
+
+
+def _name(doc: Path, root: Path) -> str:
+    return adr.slug(doc.relative_to(root).with_suffix("").as_posix())
 
 
 def _quotes(body: str) -> list[tuple[str, bool]]:

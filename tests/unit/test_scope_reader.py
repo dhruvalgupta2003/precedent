@@ -63,6 +63,15 @@ def test_instruction_files_get_their_own_prompt_and_cache(tmp_path):
     assert "instruction file" in calls[0].instructions
 
 
+def test_documents_get_a_prompt_that_asks_for_decisions_already_made(tmp_path):
+    calls: list = []
+    with capture_run_messages() as messages:
+        scope_reader(model(calls), cache_dir=tmp_path, kind="docs")("We stopped using axios.")
+
+    assert "<untrusted_document>" in str(messages[0])
+    assert "already made" in calls[0].instructions
+
+
 def test_offline_replays_recorded_answers_and_never_calls_a_model(tmp_path):
     calls: list = []
     scope_reader(model(calls), cache_dir=tmp_path)("Recorded ADR.")  # record once
