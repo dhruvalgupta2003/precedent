@@ -44,7 +44,7 @@ class Alternative(Frozen):
 
 class SourceRef(Frozen):
     url: str = Field(min_length=1)
-    kind: Literal["adr", "kep_yaml", "kep_readme", "pr", "issue", "capture"]
+    kind: Literal["adr", "doc", "kep_yaml", "kep_readme", "pr", "issue", "capture"]
     section: str | None = None
     quote: str | None = None
 

@@ -42,6 +42,8 @@ The last command answers **🛑 Stop**: the example change brings Moment back, a
 ## Use it on your project
 
 Follow [Set it up for your team](https://dhruvalgupta2003.github.io/precedent/setup/). It takes about 10 minutes.
+No decision notes yet? Point it at your whole project with `precedent load .`
+([how](https://dhruvalgupta2003.github.io/precedent/any-folder/)).
 
 Want to see how a real team uses it, start to finish? Read the
 [real-life examples](https://dhruvalgupta2003.github.io/precedent/examples/): an AI assistant that keeps using a

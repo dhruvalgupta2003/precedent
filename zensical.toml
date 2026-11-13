@@ -23,6 +23,7 @@ nav = [
     { "4. Real-life examples" = "examples.md" },
   ] },
   { "Guides" = [
+    { "Load any folder" = "any-folder.md" },
     { "Tell it what to look for" = "covers.md" },
     { "Use it with Claude Code" = "claude-code.md" },
     { "Check every pull request" = "ci.md" },

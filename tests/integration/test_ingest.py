@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from precedent import service
+from precedent.core.diff import changes
 from precedent.core.errors import ExtractionError
 from precedent.core.model import Scope
 
@@ -88,3 +89,60 @@ def test_a_dead_ai_provider_still_saves_every_decision(graph, tmp_path):
     report = service.ingest(graph, adr_folder(tmp_path), "backstage", read_scopes=read_scopes)
 
     assert (report.written, report.failed) == (2, 2)
+
+
+LUXON = "# 1. Use Luxon\n\n## Status\n\nAccepted\n\n## Decision\n\nUse Luxon for dates.\n"
+AXIOS_CHANGE = "+++ b/src/a.ts\n+import http from 'axios';\n"
+
+
+def write(root: Path, files: dict[str, str]) -> str:
+    for name, text in files.items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(text)
+    return str(root)
+
+
+def verdict(graph, diff: str = AXIOS_CHANGE) -> str:
+    return service.preflight(graph, changes(diff)).verdict
+
+
+def test_any_folder_loads_its_adrs_and_the_marked_decisions_in_other_docs(graph, tmp_path):
+    root = write(tmp_path, {"docs/adr/0001-use-luxon.md": LUXON, "docs/guide.md": "Decision: do not use `axios`.\n"})
+
+    report = service.ingest(graph, root, "team")
+
+    assert (report.written, report.found) == (1, 1)
+    assert verdict(graph) == "WARN"  # found in an ordinary doc: it may warn, never block
+
+
+def test_adrs_in_two_folders_get_ids_qualified_by_their_folder(graph, tmp_path):
+    root = write(tmp_path, {"docs/adr/0001-a.md": LUXON, "platform/adr/0001-b.md": LUXON})
+
+    service.ingest(graph, root, "team")
+
+    ids = [row[0] for row in graph.query("MATCH (d:Decision) RETURN d.id ORDER BY d.id").result_set]
+    assert ids == ["team/docs-adr/ADR0001", "team/platform-adr/ADR0001"]
+
+
+def test_a_decision_removed_from_its_doc_stops_warning_and_warns_again_if_restored(graph, tmp_path):
+    root = write(tmp_path, {"guide.md": "Decision: do not use `axios`.\n"})
+    service.ingest(graph, root, "team")
+
+    write(tmp_path, {"guide.md": "Nothing decided here.\n"})
+    service.ingest(graph, root, "team")
+    removed = verdict(graph)
+    write(tmp_path, {"guide.md": "Decision: do not use `axios`.\n"})
+    service.ingest(graph, root, "team")
+
+    assert (removed, verdict(graph)) == ("CLEAR", "WARN")
+
+
+def test_a_deleted_doc_retires_its_decisions_even_when_loading_the_current_folder(graph, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    write(tmp_path, {"notes/guide.md": "Decision: do not use `axios`.\n"})
+    service.ingest(graph, ".", "team")
+
+    (tmp_path / "notes" / "guide.md").unlink()
+    service.ingest(graph, ".", "team")
+
+    assert verdict(graph) == "CLEAR"

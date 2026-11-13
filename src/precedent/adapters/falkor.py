@@ -53,6 +53,16 @@ MATCH (d:Decision {id: $id})-[a:APPLIES_TO]->(w:Scope)
 WHERE a.invalid_at IS NULL AND NOT w.kind + ':' + w.value + ':' + a.polarity IN $stances
 SET a.invalid_at = $now
 """
+# A decision found in an ordinary document (ADR0014) that its document no longer states is retired, not deleted.
+# Clearing the hash lets it come back as it was if the document states it again.
+RETIRE_FOUND = """
+MATCH (d:Decision)-[:CITES]->(s:Source {kind: 'doc'})
+WHERE d.id STARTS WITH $prefix AND s.url IN $urls AND NOT d.id IN $kept AND d.status <> 'deprecated'
+SET d.status = 'deprecated', d.hash = null
+"""
+FOUND_URLS = (
+    "MATCH (d:Decision)-[:CITES]->(s:Source {kind: 'doc'}) WHERE d.id STARTS WITH $prefix RETURN DISTINCT s.url"
+)
 DECISION_PROPS = {
     "title",
     "statement",
@@ -64,6 +74,15 @@ DECISION_PROPS = {
     "rationale",
     "needs_review",
 }
+
+
+def found_urls(graph: Graph, prefix: str) -> list[str]:
+    """Documents that decisions under `prefix` ("org/" or "org/source/") were found in."""
+    return [row[0] for row in graph.query(FOUND_URLS, {"prefix": prefix}).result_set]
+
+
+def retire_found(graph: Graph, prefix: str, urls: list[str], kept: list[str]) -> None:
+    graph.query(RETIRE_FOUND, {"prefix": prefix, "urls": urls, "kept": kept})
 
 
 def save_decision(graph: Graph, record: DecisionRecord) -> bool:
