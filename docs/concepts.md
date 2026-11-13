@@ -33,7 +33,7 @@ Precedent reads your notes and remembers them in a small database.
 <div class="pc-step" markdown>
 <span class="pc-num">2</span>**Keep track**
 
-When a newer note says "this replaces ADR013", Precedent knows ADR013 doesn't count anymore.
+When a newer, accepted note says "this replaces ADR013", Precedent knows ADR013 doesn't count anymore.
 </div>
 <div class="pc-arrow">→</div>
 <div class="pc-step" markdown>
@@ -72,7 +72,9 @@ Often several decisions talk about the same thing. Precedent settles it the same
 that tells two decisions apart decides:
 
 1. **Only decisions in force count.** One that was replaced, rejected or retired never wins.
-2. **The newer decision that says it replaces another wins.**
+2. **The newer decision that says it replaces another wins**, once it is accepted. A note that isn't accepted
+   (proposed, rejected or deprecated) changes nothing, and an unreviewed decision can never replace a reviewed
+   one. `precedent why` lists such a claim under the decision it names, as *not in effect*, with the reason.
 3. **Reviewed beats unreviewed.** An accepted decision note, or an entry in `precedent.yaml`, beats a proposed
    decision or anything an AI read. So an AI can never weaken a rule a person approved.
 4. **Otherwise, they disagree.** Precedent never picks one by date or by which file is closer. It names both

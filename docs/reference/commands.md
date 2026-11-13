@@ -39,7 +39,9 @@ and answers in Claude Code's format.
 ## `precedent why NAME`
 
 Shows every decision about something (a library, a name in the code, a folder), which one wins, and why. For
-example, `precedent why moment`. [Which rule wins](../concepts.md#which-rule-wins) explains the order.
+example, `precedent why moment`. [Which rule wins](../concepts.md#which-rule-wins) explains the order. A note
+that would replace a decision but has no effect, because it is only proposed for example, is listed under that
+decision as *not in effect*, with the reason.
 
 | Option | What it does |
 |---|---|

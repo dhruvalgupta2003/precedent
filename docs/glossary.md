@@ -8,7 +8,8 @@
     records", or ADRs. They usually live in a folder like `docs/adr/`.
 
 **Replaced decision**
-:   A decision that a newer one took over from. The newer note says so, for example "this replaces ADR013".
+:   A decision that a newer, accepted one took over from. The newer note says so, for example "this replaces
+    ADR013". A note that is only proposed, or was rejected, can't replace anything.
     Precedent ignores replaced decisions when it checks.
 
 **`precedent.yaml`**

@@ -124,8 +124,8 @@ class DecisionRecord(BaseModel):
 
 ### Rules
 - Scope kind `symbol` covers code identifiers (`React.FC`, `export default`); found while writing eval cases E03, P03, P04.
-- **Never delete.** A changed fact sets `invalid_at` on the old edge and creates a new one. Implemented for `APPLIES_TO` (keyed by polarity): stances a re-ingested source no longer states get `invalid_at`; reads skip them.
-- A decision is **current** iff `status = "accepted"` and no incoming valid `SUPERSEDES`.
+- **Never delete.** A changed fact sets `invalid_at` on the old edge and creates a new one. Implemented for `APPLIES_TO` (keyed by polarity) and `SUPERSEDES`: stances and links a re-ingested source no longer states get `invalid_at`; reads skip them.
+- A decision is **current** iff `status = "accepted"` and no incoming valid `SUPERSEDES` that takes effect: the newer decision's own file says accepted, it is reviewed when the older one is, and the links form no loop (ADR0019).
 - A decision can **BLOCK** iff current **and** `confirmed` **and** `tier in {"structured","capture"}`.
 - Every `Decision` and every LLM-derived edge has ≥ 1 `CITES` with a `quote`.
 - A citation's `section` and `quote` live on the `CITES` edge, not the `Source` node: decisions share one document but quote different sentences, and a node property holds one value (decided 2026-11-12). MERGE keys can't be null, so a missing section or quote is stored as `""`.
@@ -227,7 +227,7 @@ A Pydantic AI agent (model from `PRECEDENT_MODEL_AGENT`, any provider) with tool
 |---|---|
 | `find_decisions(text)` | vector `db.idx.vector.queryNodes('Decision','embedding',5,vecf32($q))` ∪ full-text `db.idx.fulltext.queryNodes('Decision',$text)` |
 | `decisions_for_scope(kind, value)` | `MATCH (d:Decision)-[r:APPLIES_TO]->(s:Scope {kind:$k, value:$v}) WHERE r.invalid_at IS NULL RETURN d, r.polarity` |
-| `current_of(id)` | `MATCH (d:Decision {id:$id})<-[:SUPERSEDES*0..]-(h) WHERE NOT ()-[:SUPERSEDES]->(h) RETURN h` |
+| `current_of(id)` | Read the valid links (`MATCH (n)-[r:SUPERSEDES]->(o) WHERE r.invalid_at IS NULL`), then follow only the ones `core.authority.replacements` says take effect (ADR0019); a raw `SUPERSEDES*` walk would count links without authority |
 | `people_of(id)` | `MATCH (p:Person)-[r:AUTHORED|REVIEWED|APPROVED]->(:Decision {id:$id}) RETURN p.handle, type(r)` |
 | `rejected_for(id)` | `MATCH (a:Approach)-[r:REJECTED_IN]->(:Decision {id:$id}) RETURN a.summary, r.reason` |
 | `sources_of(id)` | `MATCH (:Decision {id:$id})-[c:CITES]->(s:Source) RETURN s.url, c.section, c.quote` |
