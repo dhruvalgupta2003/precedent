@@ -1,0 +1,97 @@
+# The docs website (https://dhruvalgupta2003.github.io/precedent/). Preview: `make docs`.
+[project]
+site_name = "Precedent"
+site_url = "https://dhruvalgupta2003.github.io/precedent/"
+site_description = "Your team's decisions, checked before every change."
+repo_url = "https://github.com/dhruvalgupta2003/precedent"
+repo_name = "dhruvalgupta2003/precedent"
+edit_uri = "edit/main/docs/"
+copyright = "Apache-2.0 · Built on FalkorDB"
+docs_dir = "docs"
+site_dir = ".cache/site"  # generated files live in .cache/ (git-ignored)
+extra_css = ["assets/site.css"]
+exclude_docs = """
+spec.md
+scenarios.md
+"""
+nav = [
+  { "Home" = "index.md" },
+  { "Get started" = [
+    { "Try it in 2 minutes" = "try.md" },
+    { "Set it up on your project" = "setup.md" },
+  ] },
+  { "Guides" = [
+    { "Say what each decision covers" = "covers.md" },
+    { "Guard Claude Code" = "claude-code.md" },
+    { "Check pull requests in CI" = "ci.md" },
+    { "Find stale instructions" = "doctor.md" },
+  ] },
+  { "Reference" = [
+    { "Commands" = "reference/commands.md" },
+    { "precedent.yaml" = "reference/precedent-yaml.md" },
+    { "Settings" = "reference/settings.md" },
+    { "Troubleshooting" = "troubleshooting.md" },
+  ] },
+  { "How it works" = [
+    { "The ideas in plain words" = "concepts.md" },
+    { "Does it work?" = "evidence.md" },
+    { "What it can't do yet" = "limits.md" },
+    { "Design decisions" = "adr/index.md" },
+  ] },
+  { "Roadmap" = "roadmap.md" },
+]
+
+[project.theme]
+language = "en"
+features = [
+  "content.action.edit",
+  "content.code.copy",
+  "content.tabs.link",
+  "navigation.footer",
+  "navigation.instant",
+  "navigation.path",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+]
+
+[project.theme.icon]
+logo = "lucide/scale"
+repo = "fontawesome/brands/github"
+
+[project.theme.font]
+text = "IBM Plex Sans"
+code = "IBM Plex Mono"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to light mode"
+
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+def_list = {}
+md_in_html = {}
+toc.permalink = true
+pymdownx.details = {}
+pymdownx.highlight.anchor_linenums = true
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.inlinehilite = {}
+pymdownx.keys = {}
+pymdownx.superfences.custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
+pymdownx.tabbed.alternate_style = true

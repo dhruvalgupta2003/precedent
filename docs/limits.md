@@ -1,6 +1,6 @@
-# What pre-flight catches, and what it can't yet
+# What it catches, and what it can't yet
 
-Measured by the `hard` eval suite (`evals/hard.jsonl`, adversarial, prod-like cases against Backstage's real ADRs).
+What `precedent check` sees in a change. Measured by the `hard` eval suite (`evals/hard.jsonl`, adversarial, prod-like cases against Backstage's real ADRs).
 It reports, it doesn't gate: a miss there is information. Run `make eval` to see the current numbers.
 
 ## Catches

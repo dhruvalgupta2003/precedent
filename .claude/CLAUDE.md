@@ -10,6 +10,7 @@ docker compose up -d   # FalkorDB on localhost:6380 (6379 is often a local Redis
 make test-fast         # unit tests while editing
 make check             # everything CI runs — must pass before any commit
 make format            # ruff format + safe fixes
+make docs              # preview the docs website (docs/, zensical.toml)
 ```
 
 ## Architecture (ADR0009; exact contract in `pyproject.toml` → `[tool.importlinter]`)
