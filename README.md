@@ -43,6 +43,10 @@ The last command answers **🛑 Stop**: the example change brings Moment back, a
 
 Follow [Set it up for your team](https://dhruvalgupta2003.github.io/precedent/setup/). It takes about 10 minutes.
 
+Want to see how a real team uses it, start to finish? Read the
+[real-life examples](https://dhruvalgupta2003.github.io/precedent/examples/): an AI assistant that keeps using a
+dropped library, a teammate's pull request, a team that changes its mind, and cleaning up old instructions.
+
 ## Does it work?
 
 In our tests, an AI assistant worked from an outdated note. Without Precedent, it followed the team's current
