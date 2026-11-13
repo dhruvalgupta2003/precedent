@@ -88,7 +88,7 @@ def _read_all(adr_folders: list[Path], root: Path, org: str, source: str) -> lis
     """Every folder's decisions, read and checked before anything is written (ADR0020): two files that would be the
     same decision stop the load, whether they sit in one folder or in folders whose names read the same."""
     name = {f: _source(source, f, root) if len(adr_folders) > 1 else source or None for f in adr_folders}
-    decisions = [record for f in adr_folders for record in adr.records(str(f), org, name[f])]
+    decisions = [record for f in adr_folders for record in adr.records(str(f), org, name[f], root)]
     adr.one_file_per_id((d.id, Path(os.path.relpath(d.sources[0].url, root)).as_posix()) for d in decisions)
     return decisions
 
