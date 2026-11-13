@@ -82,6 +82,29 @@ def database_path() -> Path:
     return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "precedent" / "precedent.db"
 
 
+def with_files(changes: list[Change], root: Path) -> list[Change]:
+    """Each change with its file as it is on disk, so pre-flight knows the names the file already imports (ADR0016).
+    Only files inside `root` are read: a diff's paths come from outside and could point anywhere."""
+    return [change._replace(context=_lines(root, change.path)) for change in changes]
+
+
+MAX_FILE_BYTES = 1_000_000  # bigger files are generated or minified, and the hook runs on every edit
+
+
+def _lines(root: Path, path: str) -> tuple[str, ...]:
+    """The file's lines, or none if it is outside `root`, missing, too big, or can't be opened. Then the change is
+    checked as if the file were new: a path the system rejects (a null byte, a name too long) must not crash the
+    check, because a crash exits 1 like a WARN and would hide a BLOCK elsewhere in the diff."""
+    try:
+        file = (root / path).resolve()
+        inside = file.is_relative_to(root.resolve()) and file.is_file()
+        if not inside or file.stat().st_size > MAX_FILE_BYTES:
+            return ()
+        return tuple(file.read_text(errors="replace").splitlines())
+    except (OSError, ValueError):
+        return ()
+
+
 def preflight(graph: Graph, changes: list[Change]) -> Report:
     """Check a change against every live decision in the org's graph (docs/spec.md §7)."""
     return check(facts(changes), rules(graph))

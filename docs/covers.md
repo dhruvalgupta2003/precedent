@@ -44,7 +44,7 @@ If an entry has a mistake, `precedent load` stops and says which entry to fix.
 
 | Kind | It finds |
 |---|---|
-| `package` | `import x from 'moment'`, `require('moment')`, `import moment` in Python, and new lines in `package.json` or `requirements.txt` |
+| `package` | `import x from 'moment'`, `require('moment')`, `import moment` in Python, and new lines in `package.json` or `requirements.txt`. Also a new `moment(…)` call in a file that already imports it |
 | `symbol` | the name in the code, like `React.FC`, including `import { FC } from 'react'` |
 | `path` | changes to a file or folder, like `services/billing/` or `*.sql` |
 
@@ -82,6 +82,7 @@ If `precedent.yaml` and the AI list the same thing, the `precedent.yaml` entry w
 | adds something the AI found an accepted decision avoids | ⚠️ Take a look (`WARN`) |
 | adds something a decision avoids, but the decision is only proposed (not accepted yet) | ⚠️ Take a look (`WARN`) |
 | follows advice from a decision that was replaced | ⚠️ Take a look (`WARN`): the advice is out of date |
+| adds a new use of an avoided library in a file that already imports it (old code during a move) | ⚠️ Take a look (`WARN`), even if a new import would stop: old code still gets fixed during a move. Changing a use that was already there stays quiet |
 | none of the above | ✅ All good (`CLEAR`) |
 
 A replaced decision never stops anything. The rule behind this table is [ADR0004](adr/0004-only-confirmed-decisions-block.md).

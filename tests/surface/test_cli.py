@@ -228,3 +228,56 @@ def test_with_no_database_anywhere_it_says_what_to_install(tmp_path, monkeypatch
 
     assert main(["load", str(tmp_path), "--org", "team"]) == 1
     assert "precedent[embedded]" in capsys.readouterr().err
+
+
+def test_the_hook_reads_the_file_being_edited_for_what_it_already_imports(tmp_path, monkeypatch, capsys):
+    (tmp_path / "a.ts").write_text("import moment from 'moment';\n")
+    edit = {"old_string": "}", "new_string": "  return moment(day);\n}", "file_path": str(tmp_path / "a.ts")}
+    seen = []
+    monkeypatch.setattr("precedent.service.preflight", lambda graph, changes: seen.extend(changes) or report("CLEAR"))
+    monkeypatch.setattr(
+        "sys.stdin", io.StringIO(json.dumps({"tool_name": "Edit", "tool_input": edit, "cwd": str(tmp_path)}))
+    )
+
+    assert main(["check", "--org", "backstage", "--hook"]) == 0
+    assert seen[0].context == ("import moment from 'moment';",)
+
+
+def test_check_reads_changed_files_but_never_one_outside_the_project(tmp_path, monkeypatch):
+    """A missing or unreadable file is checked as if it were new: it adds nothing, and never stops the check."""
+    project, outside = tmp_path / "shop", tmp_path / "secret.ts"
+    project.mkdir()
+    (project / "a.ts").write_text("import moment from 'moment';\n")
+    (project / "locked.ts").write_text("import moment from 'moment';\n")
+    (project / "locked.ts").chmod(0)
+    outside.write_text("import secret from 'secret';\n")
+    seen = []
+    monkeypatch.chdir(project)
+    monkeypatch.setattr("precedent.service.preflight", lambda graph, changes: seen.extend(changes) or report("CLEAR"))
+    diff = "+++ b/a.ts\n+moment();\n+++ b/../secret.ts\n+x\n+++ b/gone.ts\n+y\n+++ b/locked.ts\n+z\n"
+    monkeypatch.setattr("sys.stdin", io.StringIO(diff))
+
+    assert main(["check", "--org", "backstage"]) == 0
+    assert [c.context for c in seen] == [("import moment from 'moment';",), (), (), ()]
+
+
+@pytest.mark.parametrize("path", ["x\0y.ts", "a" * 300 + ".ts"], ids=["null byte", "name too long"])
+def test_a_path_the_system_cannot_open_never_hides_the_verdict(tmp_path, monkeypatch, path):
+    """A crash would exit 1, the same as WARN, and hide a BLOCK elsewhere in the diff."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("precedent.service.preflight", lambda graph, changes: report("BLOCK"))
+    monkeypatch.setattr("sys.stdin", io.StringIO(f"+++ b/{path}\n+x\n+++ b/a.ts\n+import m from 'moment';\n"))
+
+    assert main(["check", "--org", "backstage"]) == 2
+
+
+def test_a_very_large_file_is_checked_as_if_new(tmp_path, monkeypatch):
+    """The hook runs on every edit; reading a huge generated file would make each one slow."""
+    (tmp_path / "big.js").write_text("import moment from 'moment';\n" + "x\n" * 600_000)
+    seen = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("precedent.service.preflight", lambda graph, changes: seen.extend(changes) or report("CLEAR"))
+    monkeypatch.setattr("sys.stdin", io.StringIO("+++ b/big.js\n+moment();\n"))
+
+    assert main(["check", "--org", "backstage"]) == 0
+    assert seen[0].context == ()

@@ -24,6 +24,9 @@ All of them:
 | [0011](0011-guard-agents-against-dead-and-contradicted-decisions.md) | Guard agents against dead and contradicted decisions |
 | [0012](0012-one-org-graph-guards-every-repo.md) | One org graph guards every repo |
 | [0013](0013-reviewed-knowledge-in-precedent-yaml.md) | Reviewed knowledge in `precedent.yaml` |
+| [0014](0014-load-any-folder-with-or-without-ai.md) | Load any folder, with or without AI |
+| [0015](0015-a-built-in-database.md) | A built-in database, so trying it needs no Docker |
+| [0016](0016-new-uses-in-files-that-already-import.md) | New uses in files that already import a library only warn |
 
 The full technical design is in [`docs/spec.md`](https://github.com/dhruvalgupta2003/precedent/blob/main/docs/spec.md)
 on GitHub.

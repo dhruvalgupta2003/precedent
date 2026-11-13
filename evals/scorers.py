@@ -53,7 +53,9 @@ def backstage() -> Graph:
 def score_preflight(case: Case) -> tuple[bool, Any]:
     if case["org"] != "backstage" or "diff" not in case["input"]:
         raise NotImplementedError  # captures, KEPs and plan text aren't built yet
-    report = service.preflight(backstage(), changes(case["input"]["diff"]))
+    files = case["input"].get("files", {})  # each file as it is on disk (ADR0016)
+    found = [c._replace(context=tuple(files.get(c.path, "").splitlines())) for c in changes(case["input"]["diff"])]
+    report = service.preflight(backstage(), found)
     decisions = {f.decision for f in report.findings}
     passed = report.verdict == case["expected"]["verdict"] and set(case["expected"]["decisions"]) <= decisions
     return passed, report.verdict
