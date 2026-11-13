@@ -7,7 +7,7 @@ Click a problem to see the fix.
     Precedent was installed without its built-in database. Install it again with it:
 
     ```sh
-    uv tool install --force "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent"
+    uv tool install --force "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent@v0.3.0"
     ```
 
     On Windows there is no built-in database: use a server, as [Set it up](setup.md#1-install) explains.
@@ -20,7 +20,7 @@ Click a problem to see the fix.
 ??? failure "Installing fails while building `falkordblite`"
 
     The built-in database has ready-made packages for macOS and for Linux from Ubuntu 24.04 on. On older Linux, install
-    without it (`uv tool install git+https://github.com/dhruvalgupta2003/precedent`) and use a server, as
+    without it (`uv tool install git+https://github.com/dhruvalgupta2003/precedent@v0.3.0`) and use a server, as
     [Set it up](setup.md#1-install) explains.
 
 ??? question "`precedent check` always says all good (CLEAR)"

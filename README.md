@@ -54,7 +54,7 @@ In our tests, an AI assistant worked from an outdated note. Without Precedent, i
 decision **0 times out of 5**. With Precedent, **5 times out of 5**.
 [All the results](https://dhruvalgupta2003.github.io/precedent/evidence/).
 
-It's early (version 0.2), so there are [things it can't do yet](https://dhruvalgupta2003.github.io/precedent/limits/).
+It's early (version 0.3), so there are [things it can't do yet](https://dhruvalgupta2003.github.io/precedent/limits/).
 
 ## More
 

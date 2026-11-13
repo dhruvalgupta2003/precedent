@@ -111,6 +111,6 @@ Nothing is against the change. Precedent stays quiet. Shown as `CLEAR`.
 In our tests, an AI assistant worked from an outdated note. Without Precedent, it followed the team's current
 decision **0 times out of 5**. With Precedent, **5 times out of 5**. [See all the results](evidence.md).
 
-Precedent is free and open source. It is early (version 0.2), so there are [things it can't do yet](limits.md).
+Precedent is free and open source. It is early (version 0.3), so there are [things it can't do yet](limits.md).
 
 [See it in 2 minutes](try.md){ .md-button .md-button--primary }

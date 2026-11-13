@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with: { fetch-depth: 0, persist-credentials: false }
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
-      - run: uv tool install "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent"
+      - run: uv tool install "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent@v0.3.0"
       - run: precedent load docs/adr
       - name: Stop on BLOCK, allow WARN
         env: { BASE: "${{ github.base_ref }}" }
@@ -58,7 +58,7 @@ Change `docs/adr` if your decision notes live somewhere else. That's all.
 Any CI system works. Precedent tells it the answer with an exit code: `0` all good, `1` take a look, `2` stop.
 
 ```sh
-uv tool install "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent"
+uv tool install "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent@v0.3.0"
 precedent load docs/adr && git diff origin/main...HEAD | precedent check
 ```
 

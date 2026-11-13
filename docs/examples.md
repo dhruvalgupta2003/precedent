@@ -288,6 +288,106 @@ Change that line to "Use date-fns for dates", and the problem is gone for good. 
 
 ---
 
+## Story 5: "Someone proposes going back"
+
+<div class="pc-story" markdown>
+<div class="pc-scene" markdown>
+<span class="pc-when">Months later</span>
+
+A developer needs time zones and opens a pull request with a new note: **go back to Luxon**. The team hasn't
+agreed yet.
+</div>
+<div class="pc-scene is-bad" markdown>
+<span class="pc-when">The risk</span>
+
+The note says "this replaces ADR0002". If that alone were enough, merging the proposal would undo the team's
+decision before anyone agreed to it.
+</div>
+<div class="pc-scene is-good" markdown>
+<span class="pc-when">The goal</span>
+
+A proposal can say what it would replace from day one, but the current decision keeps counting until the team
+accepts the change.
+</div>
+</div>
+
+**Step 1. Write the proposal,** `docs/adr/0003-dates-back-to-luxon.md`, with the status `Proposed`:
+
+```markdown
+# 3. Go back to Luxon
+
+## Status
+
+Proposed
+
+Supersedes [ADR0002](0002-dates-use-date-fns.md)
+
+## Decision
+
+Go back to Luxon: we need time zones after all.
+```
+
+Add what it says to `precedent.yaml`, then load again:
+
+```yaml
+ADR0003:
+  - kind: package
+    value: luxon
+    polarity: prefer
+    why: we need time zones after all
+```
+
+**What happens now** when someone adds Luxon: the team's decision still holds.
+
+<div class="pc-terminal" markdown>
+
+```text
+Precedent BLOCK: this change touches decisions the team recorded.
+- team/ADR0002 says avoid luxon: "we use date-fns now (precedent.yaml)" (docs/adr/0002-dates-use-date-fns.md)
+```
+
+</div>
+
+**Step 2. Ask why.** `precedent why luxon` shows every decision about Luxon, the one that wins first, and why each
+one stands where it does:
+
+<div class="pc-terminal" markdown>
+
+```text
+luxon (package): team/ADR0002 wins.
+- team/ADR0002 · avoid · wins: reviewed and in force
+    "we use date-fns now (precedent.yaml)" (docs/adr/0002-dates-use-date-fns.md)
+    not in effect: team/ADR0003 would replace this, but is only proposed
+- team/ADR0003 · prefer · outranked: not reviewed; team/ADR0002 is reviewed and takes precedence
+    "we need time zones after all (precedent.yaml)" (docs/adr/0003-dates-back-to-luxon.md)
+- team/ADR0001 · prefer · replaced: replaced by team/ADR0002
+    "the date library we chose first (precedent.yaml)" (docs/adr/0001-dates-use-luxon.md)
+```
+
+</div>
+
+**Step 3. The team agrees.** Change the proposal's status to `Accepted` and load again. Now adding Luxon is fine,
+and `precedent why luxon` shows the new order:
+
+<div class="pc-terminal" markdown>
+
+```text
+luxon (package): team/ADR0003 wins.
+- team/ADR0003 · prefer · wins: reviewed and in force
+    "we need time zones after all (precedent.yaml)" (docs/adr/0003-dates-back-to-luxon.md)
+- team/ADR0001 · prefer · replaced: replaced by team/ADR0002
+    "the date library we chose first (precedent.yaml)" (docs/adr/0001-dates-use-luxon.md)
+- team/ADR0002 · avoid · replaced: replaced by team/ADR0003
+    "we use date-fns now (precedent.yaml)" (docs/adr/0002-dates-use-date-fns.md)
+```
+
+</div>
+
+A note that only proposes, or was rejected, never changes which decision counts. The team's "yes" does.
+[Which rule wins](concepts.md#which-rule-wins) explains the order.
+
+---
+
 ## Try it yourself
 
 - [See it in 2 minutes](try.md) with real decisions from the Backstage project.
