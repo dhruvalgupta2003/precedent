@@ -45,6 +45,7 @@ nav = [
 ]
 
 [project.theme]
+custom_dir = "overrides"  # social preview tags: overrides/main.html
 language = "en"
 features = [
   "content.action.edit",
