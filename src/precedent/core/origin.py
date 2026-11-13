@@ -15,7 +15,7 @@ from precedent.core.model import Origin
 # scheme://, then user:secret@, then the host, an optional :port, then the path after "/" or (scp-like) ":", then
 # an optional ?query or #fragment, which is dropped (a query string can carry a token too).
 REMOTE = re.compile(
-    r"^(?:(?P<scheme>[a-z][a-z0-9+.-]*)://)?(?:[^@/]*@)?(?P<host>[^/:@\s?#]+)(?::\d*)?[:/](?P<path>[^\s?#]+)(?:[?#]\S*)?$",
+    r"^(?:(?P<scheme>[a-z][a-z0-9+.-]*)://)?(?:[^@/]*@)?(?P<host>[^/:@\s?#]+)(?::\d+)?[:/](?P<path>[^\s?#]+)(?:[?#]\S*)?$",
     re.I,
 )
 # A remote that is a folder on a server, under someone's home: its path would carry their user name everywhere.
