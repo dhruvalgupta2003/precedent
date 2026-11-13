@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 
 import pytest
 
@@ -111,3 +113,9 @@ def test_a_warning_tells_the_agent_which_source_wins_and_what_to_do():
     assert "out of date" in context  # an instruction that says otherwise (CLAUDE.md, AGENTS.md) is stale
     assert "revise this change" in context
     assert "unless the user explicitly asked" in context.lower()
+
+
+def test_the_hook_does_not_load_the_ai_library():
+    """The hook runs on every edit; loading pydantic_ai would add ~0.35 s to each one, and the hook never uses it."""
+    code = "import sys, precedent.surfaces.cli; sys.exit('pydantic_ai' in sys.modules)"
+    assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0  # noqa: S603 (our own code)

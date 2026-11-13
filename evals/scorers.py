@@ -15,6 +15,7 @@ from typing import Any
 from falkordb import FalkorDB, Graph
 
 from precedent import service
+from precedent.adapters.falkor import connect
 from precedent.adapters.llm import scope_reader
 from precedent.connectors import adr
 from precedent.core.diff import changes
@@ -38,7 +39,10 @@ def reader() -> ScopeReader:
 @cache
 def backstage() -> Graph:
     """A fresh graph of Backstage's decisions, built through the real ingest path."""
-    db = FalkorDB.from_url(os.environ.get("FALKORDB_URL", "redis://localhost:6380"))
+    if os.environ.get("PRECEDENT_TEST_DB") == "embedded":  # the built-in database (ADR0015)
+        db = connect(None, Path(tempfile.mkdtemp()) / "eval.db")
+    else:
+        db = FalkorDB.from_url(os.environ.get("FALKORDB_URL", "redis://localhost:6380"))
     if GRAPH in db.list_graphs():
         db.select_graph(GRAPH).delete()
     graph = db.select_graph(GRAPH)

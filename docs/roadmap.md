@@ -7,8 +7,6 @@ Where Precedent is going, most important first. Ideas and votes are welcome in
 
 - **A GitHub Action that comments on the pull request.** It posts the decision, its words and a link next to the line
   that goes against it. A team turns it on with one file, and nobody installs anything.
-- **No Docker.** Run the database inside Precedent ([FalkorDBLite](https://docs.falkordb.com/operations/falkordblite/))
-  on laptops and in CI.
 - **`precedent init`.** Finds your ADR folder and instruction files, loads them and installs the hook, in one command.
 - **`precedent propose`.** An AI suggests `precedent.yaml` entries (forks, add-ons, other names) as comments. You
   uncomment the ones you agree with.

@@ -5,10 +5,8 @@ Precedent catch a change that goes against one of them. No account or AI key nee
 
 ## Before you start
 
-You need three free tools. You only install them once.
+You need two free tools. You only install them once.
 
-- **Docker Desktop** runs the small database Precedent uses.
-  [Download it](https://www.docker.com/products/docker-desktop/), then open it once.
 - **git** downloads the example. Most Macs already have it; if not, [download it](https://git-scm.com/downloads).
 - **uv** installs and runs Precedent. You install it with one command, below.
 
@@ -28,15 +26,18 @@ Open your **Terminal** (on a Mac, press ⌘ Space and type "Terminal"; on Window
 
 Then close the Terminal and open it again.
 
-## 1. Download Precedent and start the database
+## 1. Download Precedent
 
-Copy these three lines into the Terminal and press Enter:
+Copy these two lines into the Terminal and press Enter:
 
 ```sh
 git clone https://github.com/dhruvalgupta2003/precedent
 cd precedent
-docker compose up -d
 ```
+
+Precedent brings its own small database, so there's nothing else to install or start. (On Windows, run the demo in
+[WSL](https://learn.microsoft.com/windows/wsl/install), or use a database server as
+[Set it up](setup.md#1-install) explains.)
 
 ## 2. Load the example decisions
 
@@ -111,10 +112,7 @@ uv run precedent check --diff examples/changes/adds-node-fetch-native.diff
 
 ## When you're done
 
-This stops the database:
-
-```sh
-docker compose down
-```
+Nothing keeps running in the background. The demo's decisions are kept in a small file
+(`~/.local/share/precedent/precedent.db`) that you can delete.
 
 **Next:** [set it up for your team](setup.md).

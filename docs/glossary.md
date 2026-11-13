@@ -41,4 +41,5 @@
 :   The name of your team's set of decisions. If you only have one team, you can ignore it: the name `team` is used.
 
 **Database (FalkorDB)**
-:   Where Precedent remembers your decisions. It runs on your computer, using Docker.
+:   Where Precedent remembers your decisions. It’s built in: a small file on your computer. A team can share a
+    FalkorDB server instead.

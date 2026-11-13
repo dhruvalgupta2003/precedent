@@ -1,6 +1,7 @@
 import io
 import json
 import subprocess
+import sys
 from functools import partial
 
 import pytest
@@ -199,3 +200,31 @@ def test_load_is_the_plain_name_and_ingest_still_works(tmp_path, monkeypatch, ca
 
     assert main([command, str(tmp_path), "--no-ai"]) == 0
     assert capsys.readouterr().out == "Loaded 15 decisions into 'team': 2 new or changed, 13 already up to date.\n"
+
+
+ADR = "# 1. Use Luxon\n\n## Status\n\nAccepted\n\n## Decision\n\nUse Luxon.\n"
+
+
+@pytest.mark.integration
+def test_load_and_check_work_with_no_database_server(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("FALKORDB_URL", raising=False)
+    monkeypatch.setenv("PRECEDENT_DB", str(tmp_path / "db" / "precedent.db"))
+    (tmp_path / "adr").mkdir()
+    (tmp_path / "adr" / "0001-use-luxon.md").write_text(ADR)
+    rules = "ADR0001: [{kind: package, value: moment, polarity: avoid, why: x}]"
+    (tmp_path / "adr" / "precedent.yaml").write_text(rules)
+    monkeypatch.setattr("sys.stdin", io.StringIO("+++ b/a.ts\n+import m from 'moment';\n"))
+
+    assert main(["load", str(tmp_path / "adr"), "--org", "test-builtin"]) == 0
+    assert main(["check", "--org", "test-builtin"]) == 2
+    assert "avoid moment" in capsys.readouterr().out
+    assert (tmp_path / "db").is_dir()  # the built-in database was used, not a server
+
+
+def test_with_no_database_anywhere_it_says_what_to_install(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("FALKORDB_URL", raising=False)
+    monkeypatch.setitem(sys.modules, "redislite.falkordb_client", None)
+    monkeypatch.setattr("precedent.adapters.falkor.DEFAULT_URL", "redis://localhost:1")
+
+    assert main(["load", str(tmp_path), "--org", "team"]) == 1
+    assert "precedent[embedded]" in capsys.readouterr().err
