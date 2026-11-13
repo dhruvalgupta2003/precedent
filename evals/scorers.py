@@ -28,7 +28,7 @@ ADRS = HERE.parent / "examples" / "backstage"  # the same decisions the docs dem
 RECORDED = HERE / "fixtures" / "extract-cache"
 MODEL = os.environ.get("PRECEDENT_MODEL_EXTRACT", "openrouter:anthropic/claude-haiku-5.5")
 GRAPH = "test_eval_backstage"  # test_ prefix: the eval graph is disposable
-GRAPH_NAME_FOLDER = "test_eval_folder"
+FOLDER_GRAPH = "test_eval_folder"
 
 Case = dict[str, Any]
 
@@ -64,17 +64,17 @@ def backstage() -> Graph:
 
 def folder_verdict(files: dict[str, str], diff: str) -> str:
     """Load a small folder of decisions into its own graph, check a diff against it, then delete the graph."""
-    graph = fresh(GRAPH_NAME_FOLDER)
+    graph = fresh(FOLDER_GRAPH)
     try:
         with tempfile.TemporaryDirectory() as root:
             for name, text in files.items():
                 (Path(root) / name).write_text(text)
             service.ingest(graph, root, "team")
         return service.preflight(graph, changes(diff)).verdict
-    except KnowledgeError:
-        return "REFUSED"  # the load stopped: the decisions as written can't be trusted
+    except KnowledgeError as error:
+        return f"REFUSED: {error}"  # the load stopped, and says why
     finally:
-        if GRAPH_NAME_FOLDER in database().list_graphs():
+        if FOLDER_GRAPH in database().list_graphs():
             graph.delete()
 
 
@@ -128,7 +128,7 @@ def score_safety(case: Case) -> tuple[bool, Any]:
     given, expected = case["input"], case["expected"]
     if "files" in given:  # a folder of decisions, then a change checked against it
         got = folder_verdict(given["files"], given["diff"])
-        return got == expected["verdict"], got
+        return got.startswith(expected["verdict"]), got  # a refusal must also give the expected reason
     if "diff" in given:
         report = service.preflight(backstage(), changes(given["diff"]))
         return report.verdict == expected["verdict"], report.verdict

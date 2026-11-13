@@ -6,7 +6,7 @@ marker and `:::note[Superseded]` block. Other text, including instructions aimed
 """
 
 import re
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from datetime import date
 from pathlib import Path
 from typing import NamedTuple
@@ -54,7 +54,6 @@ def records(folder: str, org: str, source: str | None = None) -> Iterator[Decisi
     """
     prefix = f"{org}/{source}" if source else org
     adrs = [_parse(path, adr_id) for path in sorted(Path(folder).glob("*.md")) if (adr_id := adr_id_of(path))]
-    _one_file_per_id(adrs)
     known = {a.id for a in adrs}
     declared = _knowledge(Path(folder) / KNOWLEDGE_FILE, {a.id for a in adrs})
     # A link can be stated by either side; the graph stores it once, on the newer ADR.
@@ -80,17 +79,21 @@ def records(folder: str, org: str, source: str | None = None) -> Iterator[Decisi
         )
 
 
-def _one_file_per_id(adrs: list[Parsed]) -> None:
-    """Links and precedent.yaml name a decision by its number, so two files with one number can't be told apart:
-    the one saved last would overwrite the other, and a rejected copy could retire the real decision."""
+def one_file_per_id(found: Iterable[tuple[str, str]]) -> None:
+    """Refuse a load in which two files would be the same decision (ADR0020). `found` is (decision id, file).
+
+    Links and precedent.yaml name a decision by its id, so two files with one id can't be told apart: the one saved
+    last would overwrite the other, and a rejected copy could retire the real decision. Files are shown as given
+    (a path inside the loaded folder, never one on this machine), with hidden or control characters spelled out.
+    """
     files: dict[str, list[str]] = {}
-    for a in adrs:
-        files.setdefault(a.id, []).append(a.path.name)  # names only: a message never shows a path on this machine
-    twice = [f"more than one file is {i} ({', '.join(sorted(n))})" for i, n in sorted(files.items()) if len(n) > 1]
+    for decision, file in found:
+        files.setdefault(decision, []).append(file if file.isprintable() else repr(file))
+    twice = [f"more than one file is {d} ({', '.join(sorted(f))})" for d, f in sorted(files.items()) if len(f) > 1]
     if twice:
         raise KnowledgeError(
-            "; ".join(twice) + ": give each decision its own number, so links and precedent.yaml can say which one"
-            " they mean"
+            "; ".join(twice) + ": rename one, so each decision has its own id and links and precedent.yaml can say"
+            " which one they mean"
         )
 
 

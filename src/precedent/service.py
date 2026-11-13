@@ -65,22 +65,24 @@ def ingest(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> Ingest
     counts: Counter[str] = Counter()
     org, _, source = org.partition("/")
     plan = folder.scan(Path(root))
-    named = len(plan.adr_folders) > 1
-    # Read and check every folder before writing anything: a team's decisions load all at once or not at all.
-    found = [
-        parsed
-        for adr_folder in plan.adr_folders
-        for parsed in adr.records(
-            str(adr_folder), org, _source(source, adr_folder, Path(root)) if named else source or None
-        )
-    ]
+    decisions = _read_all(plan.adr_folders, Path(root), org, source)
+    # The AI reads before the first write too, so nothing is written until everything has been read and checked.
+    decisions = [_with_scopes(d, ai.adrs, counts) if ai.adrs else d for d in decisions]
     ensure_schema(graph)
-    for parsed in found:
-        record = _with_scopes(parsed, ai.adrs, counts) if ai.adrs else parsed
+    for record in decisions:
         counts["written" if save_decision(graph, record) else "unchanged"] += 1
     docs = _Docs(plan.docs, Path(root), f"{org}/{source}" if source else org)
     counts["found"] = _load_docs(graph, docs, ai.docs, counts)
     return IngestReport(**counts)
+
+
+def _read_all(adr_folders: list[Path], root: Path, org: str, source: str) -> list[DecisionRecord]:
+    """Every folder's decisions, read and checked before anything is written (ADR0020): two files that would be the
+    same decision stop the load, whether they sit in one folder or in folders whose names read the same."""
+    name = {f: _source(source, f, root) if len(adr_folders) > 1 else source or None for f in adr_folders}
+    decisions = [record for f in adr_folders for record in adr.records(str(f), org, name[f])]
+    adr.one_file_per_id((d.id, Path(os.path.relpath(d.sources[0].url, root)).as_posix()) for d in decisions)
+    return decisions
 
 
 def _source(source: str, adr_folder: Path, root: Path) -> str:

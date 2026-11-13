@@ -60,7 +60,7 @@ def test_loading_two_files_with_one_number_exits_1_names_them_and_touches_no_dat
         (tmp_path / name).write_text("# 7. X\n\n## Status\n\nAccepted\n\n## Decision\n\nUse X.\n")
 
     assert main(["load", str(tmp_path), "--no-ai"]) == 1
-    assert "more than one file is ADR0007 (0007-avoid-axios.md, 0007-zz-note.md)" in capsys.readouterr().err
+    assert "more than one file is team/ADR0007 (0007-avoid-axios.md, 0007-zz-note.md)" in capsys.readouterr().err
 
 
 def report(verdict: str) -> Report:

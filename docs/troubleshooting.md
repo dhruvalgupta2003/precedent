@@ -35,6 +35,13 @@ Click a problem to see the fix.
     If it's the first time, check the file names. Decision notes need a number at the start: `0001-title.md` or
     `adr014-title.md`. Files with `template` in the name are skipped.
 
+??? failure "It says `more than one file is …`"
+
+    Two files would be the same decision: two files in one folder with the same number, or two decision folders
+    whose names read the same (`docs/adr` and `docs-adr`). The message names the files. Rename one, and move its
+    links and `precedent.yaml` entries with it, then run `precedent load` again. Until then, checks use the last
+    load that worked. [Why](setup.md#2-write-a-decision).
+
 ??? failure "It says `precedent.yaml: …`"
 
     An entry in `precedent.yaml` has a mistake. The message names the decision and the entry. Fix it and run

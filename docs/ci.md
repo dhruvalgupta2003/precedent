@@ -59,9 +59,11 @@ Any CI system works. Precedent tells it the answer with an exit code: `0` all go
 
 ```sh
 uv tool install "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent"
-precedent load docs/adr
-git diff origin/main...HEAD | precedent check
+precedent load docs/adr && git diff origin/main...HEAD | precedent check
 ```
+
+Keep the `&&`: if the load stops (for example two files would be the same decision), the check must not run
+against an empty database.
 
 On a Windows runner or an older Linux image, install without `[embedded]`, start a FalkorDB server
 (`docker run -d -p 6380:6379 falkordb/falkordb:6.0.4`) and set `FALKORDB_URL=redis://localhost:6380`.

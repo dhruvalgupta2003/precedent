@@ -35,7 +35,8 @@ The top level is ADR ids, exactly as Precedent names them (`ADR014` for `adr014-
 ## What stops `load`
 
 Precedent never uses half of a reviewed file. Each of these stops `precedent load` with a message that names the
-problem:
+problem. A stop in any folder stops the whole load: nothing is written, and checks keep using the last load that
+worked.
 
 | Mistake | Message starts with |
 |---|---|

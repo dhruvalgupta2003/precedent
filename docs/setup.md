@@ -57,7 +57,8 @@ The number at the start of the file name is the decision's ID: `ADR0001`. The **
 
 Give each decision its own number. If two files in one folder have the same number (two pull requests both took
 `0012`, say), `precedent load` stops and names both files, because a link or `precedent.yaml` that says `ADR0012`
-can't tell them apart. Rename one, then load again; until then, checks use the last good load.
+can't tell them apart. Rename one, and move its links and `precedent.yaml` entries with it, then load again; until
+then, checks use the last load that worked.
 
 ## 3. Say what to look for
 
