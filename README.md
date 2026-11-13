@@ -17,14 +17,9 @@
 
 ## How Precedent helps
 
-```mermaid
-flowchart LR
-    A["📝 Your team writes<br/>down a decision"] --> B["🧠 Precedent<br/>remembers it"]
-    B --> C["🔍 Every change<br/>is checked"]
-    C --> D["🛑 Stop:<br/>it goes against a decision"]
-    C --> E["⚠️ Take a look:<br/>it might"]
-    C --> F["✅ All good"]
-```
+<p align="center">
+  <img src="docs/assets/how-it-works.svg" alt="1. Your team decides and writes it down. 2. Precedent remembers which decisions still count. 3. Changes are checked before they land. The answer: Stop, Take a look, or All good." width="100%">
+</p>
 
 When Precedent stops a change, it says which decision and why, so the person or the AI assistant can fix it.
 It checks changes before an AI assistant edits a file, and on every pull request.
