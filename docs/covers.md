@@ -50,7 +50,13 @@ If an entry has a mistake, `precedent load` stops and says which entry to fix.
 
 ## Or let an AI suggest it
 
-An AI can read your decision notes and work out what to look for. Set a model and its key, then load again:
+An AI can read your decision notes and work out what to look for. If you use Claude Code, nothing else is needed:
+
+```sh
+precedent load docs/adr --with claude
+```
+
+Or set a model and its key, then load again:
 
 ```sh
 export PRECEDENT_MODEL_EXTRACT=anthropic:claude-haiku-5-5

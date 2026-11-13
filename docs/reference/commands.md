@@ -14,6 +14,7 @@ AI instruction files. [Load any folder](../any-folder.md) explains it. Also work
 | `--org NAME` | which set of decisions to load into (default: `team`) |
 | `--source NAME` | names this folder, for example `platform`, so two folders that both have an `ADR001` don't clash |
 | `--no-ai` | don't use the AI, even if one is set |
+| `--with claude` | use the Claude Code you already have as the AI, instead of a model key |
 
 Notes that didn't change are skipped. Ends with `0` when done, `1` on an error (for example a mistake in
 `precedent.yaml`).
@@ -44,6 +45,7 @@ decision.
 |---|---|
 | `--project PATH` | the project to check (default: this folder) |
 | `--no-ai` | only flag lines that mention something a decision avoids |
+| `--with claude` | use the Claude Code you already have as the AI, instead of a model key |
 | `--org NAME` | which set of decisions to use (default: `team`) |
 
 Ends with `0` when nothing is found, `1` when something is.

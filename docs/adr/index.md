@@ -27,6 +27,7 @@ All of them:
 | [0014](0014-load-any-folder-with-or-without-ai.md) | Load any folder, with or without AI |
 | [0015](0015-a-built-in-database.md) | A built-in database, so trying it needs no Docker |
 | [0016](0016-new-uses-in-files-that-already-import.md) | New uses in files that already import a library only warn |
+| [0017](0017-your-own-claude-code-as-the-ai.md) | Your own Claude Code as the AI, with nothing of yours loaded |
 
 The full technical design is in [`docs/spec.md`](https://github.com/dhruvalgupta2003/precedent/blob/main/docs/spec.md)
 on GitHub.

@@ -11,16 +11,18 @@ from pathlib import Path
 from typing import Literal
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import AgentRunError
 from pydantic_ai.models import Model
 
+from precedent.adapters import claude_code
 from precedent.core.errors import ExtractionError
 from precedent.core.model import Scope
 from precedent.telemetry import traced
 
 PROMPT_VERSION = "scopes-v3"
+CLAUDE_CODE = "claude-code:"  # PRECEDENT_MODEL_EXTRACT=claude-code:haiku reads with your own Claude Code
 ADR_PROMPT = """You read one architecture decision record (ADR) and list what code it applies to.
 
 Take stances only from what the ADR decides (usually its Decision and Consequences), never from background that
@@ -101,7 +103,7 @@ def scope_reader(
     and give the same answers every time. A text nobody recorded is an error, never a silent empty answer.
     """
     version, prompt, tag = PROMPTS[kind]
-    agent = None if offline else Agent(model, output_type=_Extraction, instructions=prompt)
+    ask = None if offline else _asker(model, prompt)
     name = model if isinstance(model, str) else model.model_name
 
     @traced("extract.scopes")
@@ -109,10 +111,10 @@ def scope_reader(
         cached = cache_dir / f"{cache_key(version, name, text)}.json"
         if cached.exists():
             found = json.loads(cached.read_text())
-        elif agent is None:
+        elif ask is None:
             raise ExtractionError(f"not recorded for {name} ({version}); rerun with a model key to record it")
         else:
-            found = _ask(agent, f"<{tag}>\n{text}\n</{tag}>")
+            found = ask(f"<{tag}>\n{text}\n</{tag}>")
             cache_dir.mkdir(parents=True, exist_ok=True)
             cached.write_text(json.dumps(found))
         return [Scope.model_validate({**s, "extracted": True}) for s in found]
@@ -122,6 +124,23 @@ def scope_reader(
 
 def cache_key(version: str, model: str, text: str) -> str:
     return hashlib.sha256(f"{version}\n{model}\n{text}".encode()).hexdigest()
+
+
+def _asker(model: str | Model, prompt: str) -> Callable[[str], list[dict]]:
+    """`claude-code:<model>` asks your own Claude Code (ADR0017); any other model goes through Pydantic AI."""
+    if isinstance(model, str) and model.startswith(CLAUDE_CODE):
+        claude_code.installed()  # say so now, not once per document
+        alias, schema = model.removeprefix(CLAUDE_CODE) or "haiku", _Extraction.model_json_schema()
+        return lambda wrapped: _scopes_in(claude_code.ask(alias, prompt, schema, wrapped))
+    agent = Agent(model, output_type=_Extraction, instructions=prompt)
+    return lambda wrapped: _ask(agent, wrapped)
+
+
+def _scopes_in(answer: dict) -> list[dict]:
+    try:
+        return [s.model_dump() for s in _Extraction.model_validate(answer).scopes]
+    except ValidationError as exc:
+        raise ExtractionError(f"the answer isn't in the required shape: {exc.error_count()} errors") from exc
 
 
 def _ask(agent: Agent[None, _Extraction], wrapped: str) -> list[dict]:

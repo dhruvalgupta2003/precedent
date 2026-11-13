@@ -70,7 +70,17 @@ before them mean "avoid it". **Use** or **prefer** mean "this is the right way".
 ## Let an AI find the rest
 
 Most decisions are written as ordinary sentences, like "After the outage we stopped using axios." An AI can find those.
-Set a model and its key, then load again:
+If you use Claude Code, it can be the AI, with no key to set up:
+
+```sh
+precedent load . --with claude
+```
+
+It runs with no tools and with none of your Claude Code setup (no CLAUDE.md, hooks, plugins or MCP servers), so an
+outdated instruction file can't change what it finds. It uses your Claude Code plan: one short answer per document,
+from the fast Haiku model.
+
+Or set a model and its key, then load again:
 
 ```sh
 export PRECEDENT_MODEL_EXTRACT=anthropic:claude-haiku-5-5
@@ -106,5 +116,4 @@ Loading again without an AI (a teammate, or CI) keeps what an AI found, as long 
 
 ## Coming next
 
-- **Using the Claude Code you already use** to read documents, instead of a model key.
 - **Drafting decision notes for you** (`--draft-adrs`), so accepting a found decision is one review in a pull request.
