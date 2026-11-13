@@ -20,17 +20,20 @@ blocks whose files still existed.
 1. Inside a git repository with a name, every decision loaded from a decision file records its origin: the
    repository and the file's path inside it. The name is the `origin` remote as `host/owner/name` (lower case, no
    scheme, port, `.git`, query or credential; Azure DevOps' two forms agree), else `PRECEDENT_REPO` for a repository
-   without one, normalised the same way. The path is git's path to the loaded folder plus the file's path inside
-   it, never a resolved path. Outside such a repository decisions keep no origin, and nothing below applies.
+   without one, normalised the same way; a remote that is a folder under someone's home on a server names
+   nothing. The path is git's path to the loaded folder plus the file's path inside it, never a resolved path. git
+   runs without the location variables a hook exports, and its answer must be the loaded folder. Outside such a
+   repository decisions keep no origin, nothing is retired, and the load may not take an id a repository owns.
 2. A load owns the decision files under the folder it loaded, in its repository.
 3. A load may take a decision id only from a file it owns. If a decision still counting has the id from a file in
    another repository, or in a folder of this repository outside the load, the load stops before writing anything,
    names both files and suggests `--source`.
 4. A load retires a decision it owns but didn't load only when this checkout proves the file is gone: the load read
-   that file again under another id (after `--source`, or a second decision folder), or the file is missing here and
-   the first commit it was loaded at with the file committed is in this checkout's history. Anything else keeps
-   counting. A retired decision's stances and "replaces" links get `invalid_at` (spec §4); it holds no id, and it
-   counts again if its file returns.
+   that file again under another id (after `--source`, or a second decision folder), or the file is neither in the
+   checked-out commit nor on disk, and the first or the latest commit the decision was loaded at with its file
+   committed is in this checkout's history. Anything else keeps counting. A retired decision's stances and
+   "replaces" links get `invalid_at` (spec §4); it holds no id, and it counts again if its file returns. The steps
+   run in an order where a crash at any point heals on the next load.
 5. A decision loaded before origins were kept has no origin: it becomes the next load's that names its id.
 
 ## Alternatives
@@ -51,8 +54,11 @@ blocks whose files still existed.
   committed, a decision loaded before this change, or one loaded outside a named repository. For a decision that
   says avoid, that keeps the block; for one that replaced another, the old one stays replaced until a load can prove
   the deletion. Commit the deletion and load from a full clone.
-- A load whose remote is set to another repository's name acts for that repository: who may load into an org is a
-  matter of who may write to its graph.
+- A load whose remote is set to another repository's name acts for that repository, and two repositories given the
+  same `PRECEDENT_REPO` are treated as one (neither can retire the other's decisions, since their histories differ,
+  but one can overwrite the other's): who may load into an org is a matter of who may write to its graph.
+- A deletion is proven only once it is committed: deleting a file and loading before committing retires nothing.
 - Tests: 3,024 remote URL forms plus random text (no credential, query or fragment survives), every relation between
-  an earlier decision and a load, 96 retirement cases, random histories, and real git repositories with commits,
-  branches and clones for every case above. Safety eval X12.
+  an earlier decision and a load, 96 retirement cases, random histories, and real git repositories for every case
+  above: commits, branches, clones, a squash merge, a sparse checkout, a hook's GIT_DIR, a crash midway, symlinks, a
+  file name git can't spell in UTF-8. Safety eval X12.

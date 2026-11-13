@@ -104,19 +104,25 @@ RETURN d.id, s.url, c.quote
 # repository. A retired decision (gone) holds no id, so another file may take it.
 ORIGINS = """
 MATCH (d:Decision) WHERE (d.id IN $ids OR d.repo = $repo) AND d.gone IS NULL
-RETURN d.id, d.repo, d.path, d.commit
+RETURN d.id, d.repo, d.path, d.commit, d.last
 """
 # A decision whose file is proven gone states nothing any more: its stances and "replaces" links stop counting, kept
 # as history (spec §4). Clearing the hash lets it come back as it was if its file returns.
+# In this order, so a crash anywhere heals on the next load: the hash goes first (a later load re-saves the decision
+# if its file is back), and `gone` goes last (until then, a later load still sees it and retires it again).
 RETIRE_GONE = (
+    "MATCH (d:Decision) WHERE d.id IN $ids SET d.hash = null",
     "MATCH (d:Decision)-[a:APPLIES_TO]->() WHERE d.id IN $ids AND a.invalid_at IS NULL SET a.invalid_at = $now",
     "MATCH (d:Decision)-[r:SUPERSEDES]->() WHERE d.id IN $ids AND r.invalid_at IS NULL SET r.invalid_at = $now",
-    "MATCH (d:Decision) WHERE d.id IN $ids SET d.hash = null, d.gone = true",
+    "MATCH (d:Decision) WHERE d.id IN $ids SET d.gone = true",
 )
 # The commit a decision was loaded at belongs to its file: a decision that moves to another file starts again.
-FORGET_COMMIT = "MATCH (d:Decision {id: $id}) WHERE d.repo <> $repo OR d.path <> $path SET d.commit = null"
-# The first commit a decision's file was committed in: proof, later, that a checkout without it deleted it.
-NOTE_COMMIT = "UNWIND $ids AS i MATCH (d:Decision {id: i}) WHERE d.commit IS NULL SET d.commit = $commit"
+FORGET_COMMIT = (
+    "MATCH (d:Decision {id: $id}) WHERE d.repo <> $repo OR d.path <> $path SET d.commit = null, d.last = null"
+)
+# The first and the latest commits a decision's file was committed in: proof, later, that a checkout without the
+# file deleted it. The latest one survives a squash merge or a rebase that drops the first.
+NOTE_COMMIT = "UNWIND $ids AS i MATCH (d:Decision {id: i}) SET d.commit = coalesce(d.commit, $commit), d.last = $commit"
 DECISION_PROPS = {
     "title",
     "statement",
@@ -147,7 +153,7 @@ def retire_found(graph: Graph, prefix: str, urls: list[str], kept: list[str]) ->
 def origins(graph: Graph, ids: list[str], repo: str) -> list[Earlier]:
     """Where the decisions with these ids, and every decision from this repository, were loaded from."""
     rows = graph.query(ORIGINS, {"ids": ids, "repo": repo}).result_set
-    return [Earlier(i, Origin(repo=r, path=p) if r and p else None, c or None) for i, r, p, c in rows]
+    return [Earlier(i, Origin(repo=r, path=p) if r and p else None, c or None, la or None) for i, r, p, c, la in rows]
 
 
 def note_commit(graph: Graph, ids: list[str], commit: str) -> None:

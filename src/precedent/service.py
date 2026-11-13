@@ -27,7 +27,7 @@ from precedent.core.doctor import StaleLine, mentions, stale_lines
 from precedent.core.errors import ExtractionError, KnowledgeError
 from precedent.core.grounding import grounded, keep_grounded
 from precedent.core.model import DecisionRecord, Origin, Scope
-from precedent.core.origin import Earlier, Proof, Reach, clashes, covers, repo_name, retired
+from precedent.core.origin import Earlier, Proof, Reach, clashes, covers, repo_name, retired, taken_without_origin
 from precedent.core.preflight import Report, check
 
 if TYPE_CHECKING:
@@ -131,34 +131,47 @@ def _with_origin(record: DecisionRecord, where: Where | None, root: Path) -> Dec
 
 
 def _claim(graph: Graph, decisions: list[DecisionRecord], where: Where | None) -> list[Earlier]:
-    """The decisions this load may touch, after refusing to take an id from a file it doesn't own."""
+    """The decisions this load may touch, after refusing to take an id from a file it doesn't own. A load from
+    outside a git repository with a name owns nothing, so it may never take an id a repository owns."""
+    ids = [d.id for d in decisions]
+    earlier = origins(graph, ids, where.reach.repo if where else "")
+    loaded = [(e.decision, e.origin) for e in earlier]
     if where is None:
-        return []
-    earlier = origins(graph, [d.id for d in decisions], where.reach.repo)
-    mine = [(d.id, d.origin) for d in decisions if d.origin]
-    if found := clashes(mine, [(e.decision, e.origin) for e in earlier], where.reach):
+        found = taken_without_origin(ids, loaded)
+    else:
+        found = clashes([(d.id, d.origin) for d in decisions if d.origin], loaded, where.reach)
+    if found:
         raise KnowledgeError(
             "; ".join(found) + ". To keep both, load this folder with --source NAME (for example its repository's"
             " name), or load the folder that holds both if they are in one repository"
         )
-    return earlier
+    return earlier if where else []
 
 
 def _retire(graph: Graph, decisions: list[DecisionRecord], earlier: list[Earlier], where: Where | None) -> int:
-    """Note the commit each committed decision file is in, then retire what this checkout proves is gone."""
-    if where is None:
+    """Note the commit each committed decision file is in, then retire what this checkout proves is gone: a file
+    that is neither in the checked-out commit nor on disk, last seen at a commit in this checkout's history."""
+    committed = folder.committed(where.repo) if where else None
+    if where is None or committed is None:
         return 0
-    read = frozenset(d.origin.path for d in decisions if d.origin)
-    committed = folder.committed(where.repo)
     if where.repo.head:
         note_commit(graph, [d.id for d in decisions if d.origin and d.origin.path in committed], where.repo.head)
     owned = [e for e in earlier if e.origin and covers(where.reach, e.origin)]
-    missing = frozenset(e.origin.path for e in owned if e.origin and not (where.repo.top / e.origin.path).is_file())
-    seen = {e.commit for e in owned if e.commit}
-    history = frozenset(c for c in seen if folder.in_history(where.repo, c))
-    gone = retired(earlier, {d.id for d in decisions}, where.reach, Proof(read, missing, history))
+    missing = [e for e in owned if e.origin and _gone_from(e.origin.path, committed, where.repo.top)]
+    asked = {c for e in missing for c in (e.commit, e.last) if c}
+    proof = Proof(
+        read=frozenset(d.origin.path for d in decisions if d.origin),
+        missing=frozenset(e.origin.path for e in missing if e.origin),
+        history=frozenset(c for c in asked if folder.in_history(where.repo, c)),
+    )
+    gone = retired(earlier, {d.id for d in decisions}, where.reach, proof)
     retire_gone(graph, gone)
     return len(gone)
+
+
+def _gone_from(path: str, committed: set[str], top: Path) -> bool:
+    """Not in the checked-out commit and not on disk: a sparse checkout or a skipped folder doesn't count."""
+    return path not in committed and not (top / path).exists()
 
 
 def _source(source: str, adr_folder: Path, root: Path) -> str:

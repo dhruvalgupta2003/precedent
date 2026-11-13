@@ -6,6 +6,7 @@ finds quotes the document word for word and enters as proposed and unstructured:
 """
 
 import hashlib
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -81,21 +82,23 @@ class Repository(NamedTuple):
 
 
 def repository(root: Path) -> Repository | None:
-    """The git repository a folder is in, or None outside one (or when git refuses to run there)."""
+    """The git repository a folder is in, or None outside one, when git refuses to run there, or when git's answer
+    isn't this folder (a stray GIT_DIR or GIT_WORK_TREE would make git describe another one)."""
     top = _git(root, "rev-parse", "--show-toplevel")
-    if top is None:
+    prefix = _git(root, "rev-parse", "--show-prefix")
+    if top is None or prefix is None or not (Path(top) / prefix).samefile(root):  # case and links agree
         return None
-    prefix = _git(root, "rev-parse", "--show-prefix") or ""
     head = _git(root, "rev-parse", "--verify", "-q", "HEAD")
     return Repository(Path(top), _git(root, "remote", "get-url", "origin") or "", prefix, head)
 
 
-def committed(repo: Repository) -> set[str]:
-    """Paths under the folder that are in the checked-out commit (a file only on disk isn't committed yet)."""
+def committed(repo: Repository) -> set[str] | None:
+    """Paths under the folder in the checked-out commit (a file only on disk isn't committed yet). None when git
+    can't list them: then nothing can be proven gone."""
     if repo.head is None:
         return set()
     listed = _git(repo.top, "ls-tree", "-r", "-z", "--name-only", repo.head, "--", repo.prefix or ".")
-    return set((listed or "").split("\0")) - {""}
+    return None if listed is None else set(listed.split("\0")) - {""}
 
 
 def in_history(repo: Repository, commit: str) -> bool:
@@ -103,24 +106,31 @@ def in_history(repo: Repository, commit: str) -> bool:
     return repo.head is not None and _git(repo.top, "merge-base", "--is-ancestor", commit, repo.head) is not None
 
 
-def _git(root: Path, *args: str) -> str | None:
-    done = subprocess.run(  # noqa: S603 (fixed arguments, no shell)
+# Variables a git hook exports that point git at another repository or index than the folder's own.
+GIT_LOCATION = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_PREFIX")
+
+
+def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """git on the folder itself: no inherited location variables, and any file name decoded without crashing."""
+    env = {k: v for k, v in os.environ.items() if k not in GIT_LOCATION}
+    return subprocess.run(  # noqa: S603 (fixed arguments, no shell)
         ["git", "-C", str(root), *args],  # noqa: S607
         capture_output=True,
         text=True,
+        errors="surrogateescape",
+        env=env,
         check=False,
     )
-    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def _git(root: Path, *args: str) -> str | None:
+    done = _run_git(root, *args)
+    return done.stdout.strip("\n") if done.returncode == 0 else None
 
 
 def _git_files(root: Path) -> list[Path] | None:
     """Files git shows (tracked, or new and not ignored) that still exist; None outside a git repository."""
-    listed = subprocess.run(  # noqa: S603 (fixed arguments, no shell)
-        ["git", "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard", "-z"],  # noqa: S607
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    listed = _run_git(root, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
     if listed.returncode != 0:
         return None
     return [root / name for name in listed.stdout.split("\0") if name and (root / name).is_file()]

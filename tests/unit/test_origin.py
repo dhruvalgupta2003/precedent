@@ -14,7 +14,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from precedent.core.model import Origin
-from precedent.core.origin import Earlier, Proof, Reach, clashes, covers, repo_name, retired
+from precedent.core.origin import Earlier, Proof, Reach, clashes, covers, repo_name, retired, taken_without_origin
 
 # ---------- 1. naming a repository from its remote URL ----------
 
@@ -70,6 +70,8 @@ def test_azure_devops_ssh_and_https_remotes_name_one_repository(url):
         "./web.git",
         "C:\\repos\\web",
         "C:/repos/web",
+        "git@github.com:.git",
+        "https://github.com/acme/we@b",
         "c:/repos/web.git",
         "",
         "   ",
@@ -78,6 +80,21 @@ def test_azure_devops_ssh_and_https_remotes_name_one_repository(url):
     ],
 )
 def test_a_remote_that_is_a_path_on_this_machine_or_empty_names_no_repository(url):
+    assert repo_name(url) is None
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "alice@devbox:/srv/alice/web.git",  # an absolute folder on the server
+        "devbox:~/web.git",
+        "ssh://devbox/~alice/web.git",
+        "ssh://alice@devbox/HOME/alice/src/web.git",  # home folders, in any letter case
+        "ssh://devbox/users/alice/web",
+    ],
+)
+def test_a_remote_that_is_a_folder_in_someones_home_names_no_repository(url):
+    """Security review of PR #60: the path would carry a person's user name into every decision and message."""
     assert repo_name(url) is None
 
 
@@ -138,6 +155,24 @@ def test_a_clash_says_where_both_files_are_and_what_to_do():
         "team/ADR0007 is already loaded from github.com/acme/pay (adr/0007-x.md), and this load reads it from "
         "github.com/acme/web (docs/adr/0007-avoid-axios.md)"
     ]
+
+
+@pytest.mark.parametrize(
+    ("before", "taken"),
+    [(Origin(repo=WEB, path=HERE), True), (None, False)],
+    ids=["owned-by-a-repository", "no-origin"],
+)
+def test_a_load_with_no_origin_never_takes_an_id_a_repository_owns(before, taken):
+    """Security review of PR #60: a folder outside git overwrote github.com/acme/web's ADR0007."""
+    loaded = [("team/ADR0007", before), ("team/ADR0008", Origin(repo=WEB, path=HERE))]
+
+    found = taken_without_origin(["team/ADR0007"], loaded)
+
+    message = (
+        "team/ADR0007 is already loaded from github.com/acme/web (docs/adr/0007-avoid-axios.md), and this load"
+        " reads it from a folder outside a git repository with a name"
+    )
+    assert found == ([message] if taken else [])
 
 
 def test_different_ids_never_clash():
@@ -234,6 +269,14 @@ def test_a_decision_is_retired_only_when_this_checkout_proves_its_file_is_gone(c
     assert got == (["team/ADR0042"] if should_retire(case) else [])
 
 
+def test_the_latest_commit_a_file_was_seen_in_proves_a_deletion_too():
+    """After a squash merge or a rebase, the first commit is in no branch any more; the latest one still is."""
+    earlier = [Earlier("team/ADR0042", Origin(repo=WEB, path="docs/adr/0042.md"), "feature", "main-tip")]
+    proof = Proof(frozenset(), frozenset({"docs/adr/0042.md"}), frozenset({"main-tip"}))
+
+    assert retired(earlier, set(), REACH, proof) == ["team/ADR0042"]
+
+
 def test_a_file_in_a_folder_the_load_skipped_is_not_proof_of_anything():
     """Security review of PR #60: `precedent load .` skips .github/; the file is still there, so nothing retires."""
     earlier = [Earlier("team/ADR0007", Origin(repo=WEB, path=".github/adr/0007.md"), "c1")]
@@ -270,7 +313,13 @@ def histories(draw: st.DrawFn) -> tuple[list[Earlier], list[tuple[str, Origin]],
     origins = st.none() | st.builds(Origin, repo=st.sampled_from(REPOS), path=st.sampled_from(FILES))
     earlier = draw(
         st.lists(
-            st.builds(Earlier, st.sampled_from(ids), origins, st.sampled_from([None, "c1", "c2"])),
+            st.builds(
+                Earlier,
+                st.sampled_from(ids),
+                origins,
+                st.sampled_from([None, "c1", "c2"]),
+                st.sampled_from([None, "c2"]),
+            ),
             unique_by=lambda e: e.decision,
             max_size=5,
         )
@@ -303,11 +352,12 @@ def test_a_load_never_retires_or_takes_a_decision_it_doesnt_own(history):
     assert gone.isdisjoint(loaded_ids)  # nothing this load reads is retired by it
     assert refused <= loaded_ids  # only ids this load wants can be refused
     for decision in gone:
-        _, origin, commit = where[decision]
+        _, origin, commit, _ = where[decision]
         assert origin is not None  # a decision of unknown origin is never retired
         assert origin.repo == reach.repo  # never another repository's
         assert origin.path.startswith(reach.under)  # never outside the loaded folder
-        assert origin.path in proof.read or (origin.path in proof.missing and commit in proof.history)  # proven
+        commits = {commit, where[decision].last}
+        assert origin.path in proof.read or (origin.path in proof.missing and commits & proof.history)  # proven
     for decision in refused:
         assert where[decision].origin is not None  # a decision of unknown origin is never refused
         assert where[decision].origin != dict(loading)[decision]  # the same file loading again is never refused

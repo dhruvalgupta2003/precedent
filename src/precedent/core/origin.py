@@ -15,24 +15,29 @@ from precedent.core.model import Origin
 # scheme://, then user:secret@, then the host, an optional :port, then the path after "/" or (scp-like) ":", then
 # an optional ?query or #fragment, which is dropped (a query string can carry a token too).
 REMOTE = re.compile(
-    r"^(?:[a-z][a-z0-9+.-]*://)?(?:[^@/]*@)?(?P<host>[^/:@\s?#]+)(?::\d*)?[:/](?P<path>[^\s?#]+)(?:[?#]\S*)?$", re.I
+    r"^(?:(?P<scheme>[a-z][a-z0-9+.-]*)://)?(?:[^@/]*@)?(?P<host>[^/:@\s?#]+)(?::\d*)?[:/](?P<path>[^\s?#]+)(?:[?#]\S*)?$",
+    re.I,
 )
+# A remote that is a folder on a server, under someone's home: its path would carry their user name everywhere.
+PERSONAL = re.compile(r"^(?:[/~]|(?:home|users)/)", re.I)
 ON_THIS_MACHINE = re.compile(r"^(?:[/.~]|file:|[a-z]:[\\/])", re.I)  # a path, or a Windows drive either way
 
 
 class Earlier(NamedTuple):
-    """A decision already in the graph: where its file was, and the commit it was loaded at with its file committed."""
+    """A decision already in the graph: where its file was, and the first and the latest commits it was loaded at
+    with its file committed (after a squash merge or a rebase, only the latest may still be in a branch)."""
 
     decision: str
     origin: Origin | None
     commit: str | None
+    last: str | None = None
 
 
 class Proof(NamedTuple):
     """What this checkout can show about decisions it owns but didn't load."""
 
     read: frozenset[str]  # paths this load read (a file can come back under a new id)
-    missing: frozenset[str]  # owned paths with no file in this checkout
+    missing: frozenset[str]  # owned paths that are neither in the checked-out commit nor on disk
     history: frozenset[str]  # recorded commits that are in this checkout's history
 
 
@@ -50,7 +55,11 @@ def repo_name(url: str) -> str | None:
     match = REMOTE.match(url) if url and not ON_THIS_MACHINE.match(url) else None
     if match is None:
         return None
-    path = match["path"].strip("/").removesuffix(".git").strip("/").lower()
+    raw = match["path"]
+    ssh = (match["scheme"] or "ssh").lower() == "ssh"  # scp-like (no scheme) is ssh too
+    if raw.startswith(("/", "~")) or (ssh and PERSONAL.match(raw)):
+        return None
+    path = raw.strip("/").removesuffix(".git").strip("/").lower()
     if not path or any(c in path for c in "@:"):
         return None
     return "/".join(_azure(match["host"].lower(), path))
@@ -91,18 +100,29 @@ def clashes(
     return found
 
 
+def taken_without_origin(ids: Iterable[str], loaded: Iterable[tuple[str, Origin | None]]) -> list[str]:
+    """Ids a load from outside a git repository with a name would take from a decision a repository owns."""
+    wanted = set(ids)
+    return [
+        f"{decision} is already loaded from {_shown(before.repo)} ({_shown(before.path)}), and this load reads it from"
+        " a folder outside a git repository with a name"
+        for decision, before in sorted(loaded, key=lambda entry: entry[0])
+        if before is not None and decision in wanted
+    ]
+
+
 def retired(earlier: Iterable[Earlier], kept: set[str], reach: Reach, proof: Proof) -> list[str]:
     """Decisions this load owns and didn't load, that this checkout proves are gone: it read their file again under
-    another id, or their file is missing here and the commit they were loaded at is in this checkout's history.
+    another id, or their file is missing here and a commit they were loaded at is in this checkout's history.
 
     A folder the load skipped, an older branch, a shallow clone or a file never committed proves nothing, so those
     decisions keep counting.
     """
     gone = []
-    for decision, origin, commit in earlier:
+    for decision, origin, *seen in earlier:
         if origin is None or decision in kept or not covers(reach, origin):
             continue
-        if origin.path in proof.read or (origin.path in proof.missing and commit in proof.history):
+        if origin.path in proof.read or (origin.path in proof.missing and proof.history.intersection(seen)):
             gone.append(decision)
     return sorted(gone)
 

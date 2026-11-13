@@ -31,11 +31,11 @@ STANCES = {
 WEB, PAY = "https://github.com/acme/web.git", "git@github.com:acme/pay.git"
 
 
-def git(root: Path, *args: str) -> str:
-    """Run git in a test repository (fixed arguments, no shell)."""
+def git(root: Path, *args: str, check: bool = True) -> str:
+    """Run git in a test repository (fixed arguments, no shell). Without `check`, a failure returns "failed"."""
     who = ["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"]
-    done = subprocess.run(["git", "-C", str(root), *who, *args], check=True, capture_output=True, text=True)  # noqa: S603, S607
-    return done.stdout.strip()
+    done = subprocess.run(["git", "-C", str(root), *who, *args], check=check, capture_output=True, text=True)  # noqa: S603, S607
+    return done.stdout.strip() if done.returncode == 0 else "failed"
 
 
 def repo(root: Path, remote: str | None = WEB) -> Path:
@@ -161,6 +161,7 @@ def test_a_deleted_decision_file_stops_counting_and_is_kept_as_history(graph, tm
     assert verdict(graph) == "BLOCK"
 
     decisions(folder, {"0001-keep.md": note(1)})
+    commit(root)
     report = service.ingest(graph, str(root), "team")
 
     assert verdict(graph) == "CLEAR"
@@ -180,6 +181,7 @@ def test_a_deleted_replacement_brings_the_old_decision_back(graph, tmp_path):
     assert verdict(graph) == "CLEAR"
 
     decisions(folder, {"0007-avoid-axios.md": AVOID})
+    commit(root)
     service.ingest(graph, str(root), "team")
 
     assert verdict(graph) == "BLOCK"
@@ -192,10 +194,12 @@ def test_a_restored_file_counts_again(graph, tmp_path):
     commit(root)
     service.ingest(graph, str(root), "team")
     decisions(folder, {"0001-other.md": note(1)})
+    commit(root)
     service.ingest(graph, str(root), "team")
     assert verdict(graph) == "CLEAR"
 
     decisions(folder, {"0001-other.md": note(1), "0007-avoid-axios.md": AVOID})
+    commit(root)
     service.ingest(graph, str(root), "team")
 
     assert verdict(graph) == "BLOCK"
@@ -307,6 +311,169 @@ def test_a_never_committed_decision_is_not_retired(graph, tmp_path):
     assert (report.retired, verdict(graph)) == (0, "BLOCK")
 
 
+def test_a_deletion_not_yet_committed_retires_nothing(graph, tmp_path):
+    """The file is still in the checked-out commit, so nothing proves the team deleted it yet."""
+    root = repo(tmp_path / "web")
+    folder = root / "docs" / "adr"
+    decisions(folder, {"0007-avoid-axios.md": AVOID, "0001-other.md": note(1)})
+    commit(root)
+    service.ingest(graph, str(root), "team")
+    decisions(folder, {"0001-other.md": note(1)})
+
+    report = service.ingest(graph, str(root), "team")
+
+    assert (report.retired, verdict(graph)) == (0, "BLOCK")
+
+
+def test_a_sparse_checkout_without_the_decision_folder_retires_nothing(graph, tmp_path):
+    """Security review of PR #60: the files are in the commit but not on disk; that proves nothing was deleted."""
+    root = repo(tmp_path / "web")
+    decisions(root / "docs" / "adr", {"0007-avoid-axios.md": AVOID})
+    (root / "src").mkdir()
+    (root / "src" / "notes.md").write_text("# Notes\n")
+    commit(root)
+    service.ingest(graph, str(root), "team")
+    git(root, "sparse-checkout", "set", "src")
+    assert not (root / "docs" / "adr" / "0007-avoid-axios.md").exists()
+
+    report = service.ingest(graph, str(root), "team")
+
+    assert (report.retired, verdict(graph)) == (0, "BLOCK")
+
+
+def test_a_squash_merged_branch_can_still_prove_a_later_deletion(graph, tmp_path):
+    """Security review of PR #60: the first commit a decision was loaded at is lost in a squash merge; the latest one
+    a load saw it in still proves the deletion."""
+    root = repo(tmp_path / "web")
+    folder = root / "docs" / "adr"
+    decisions(folder, {"0007-avoid-axios.md": AVOID})
+    commit(root)
+    main = git(root, "branch", "--show-current")
+    git(root, "checkout", "-q", "-b", "use-axios")
+    decisions(folder, {"0007-avoid-axios.md": AVOID, "0042-use-axios.md": REPLACE})
+    commit(root)
+    service.ingest(graph, str(root), "team")  # first loaded on the branch
+    git(root, "checkout", "-q", main)
+    decisions(folder, {"0007-avoid-axios.md": AVOID, "0001-other.md": note(1)})
+    commit(root)  # main moves on meanwhile, so the squash commit is new
+    git(root, "merge", "-q", "--squash", "use-axios")
+    commit(root)
+    assert git(root, "merge-base", "--is-ancestor", "use-axios", "HEAD", check=False) == "failed"
+    service.ingest(graph, str(root), "team")  # loaded again on main after the squash
+    decisions(folder, {"0007-avoid-axios.md": AVOID, "0001-other.md": note(1)})
+    commit(root)
+
+    service.ingest(graph, str(root), "team")
+
+    assert verdict(graph) == "BLOCK"
+
+
+def test_a_load_run_from_a_git_hook_with_git_dir_set_still_knows_its_folder(graph, tmp_path, monkeypatch):
+    """Security review of PR #60: hooks export GIT_DIR, which made git treat the loaded sub-folder as the top."""
+    root = repo(tmp_path / "shop")
+    decisions(root / "services" / "web" / "adr", {"0007-avoid-axios.md": AVOID})
+    decisions(root / "docs" / "adr", {"0001-other.md": note(1)})
+    commit(root)
+    service.ingest(graph, str(root / "services" / "web" / "adr"), "team/web")
+    monkeypatch.setenv("GIT_DIR", str(root / ".git"))
+
+    report = service.ingest(graph, str(root / "docs" / "adr"), "team/docs")
+
+    assert (report.retired, verdict(graph)) == (0, "BLOCK")
+    assert graph.query("MATCH (d:Decision {id: 'team/docs/ADR0001'}) RETURN d.path").result_set == [
+        ["docs/adr/0001-other.md"]
+    ]
+
+
+def test_a_retirement_cut_short_heals_on_the_next_load(graph, tmp_path, monkeypatch):
+    """Security review of PR #60: a crash between the steps must never leave a decision's stances off while its
+    hash still says nothing changed."""
+    root = repo(tmp_path / "web")
+    folder = root / "docs" / "adr"
+    decisions(folder, {"0007-avoid-axios.md": AVOID, "0001-other.md": note(1)})
+    commit(root)
+    service.ingest(graph, str(root), "team")
+    decisions(folder, {"0001-other.md": note(1)})
+    commit(root)
+    real = graph.query
+    calls = []
+
+    def stop_after_two_steps(query: str, params: dict | None = None):
+        if ("d.id IN $ids" in query and "$now" in query) or "SET d.hash = null" in query:
+            calls.append(query)
+            if len(calls) > 2:
+                raise RuntimeError("the machine went down")
+        return real(query, params)
+
+    monkeypatch.setattr(graph, "query", stop_after_two_steps)
+    with pytest.raises(RuntimeError):
+        service.ingest(graph, str(root), "team")
+    monkeypatch.setattr(graph, "query", real)
+    decisions(folder, {"0007-avoid-axios.md": AVOID, "0001-other.md": note(1)})  # the file comes back
+    commit(root)
+
+    service.ingest(graph, str(root), "team")
+
+    assert verdict(graph) == "BLOCK"
+
+
+def test_a_load_outside_a_named_repository_cannot_take_a_repositorys_id(graph, tmp_path):
+    """Security review of PR #60: a folder with no repository name overwrote github.com/acme/web's ADR0007."""
+    web = repo(tmp_path / "web")
+    decisions(web / "docs" / "adr", {"0007-avoid-axios.md": AVOID})
+    service.ingest(graph, str(web), "team")
+    loose = tmp_path / "loose"
+    decisions(loose, {"0007-a-note.md": note(7)})
+
+    with pytest.raises(KnowledgeError, match=r"already loaded from github\.com/acme/web"):
+        service.ingest(graph, str(loose), "team")
+
+    assert verdict(graph) == "BLOCK"
+
+
+def test_a_file_name_git_cant_spell_in_utf8_doesnt_crash_the_load(graph, tmp_path):
+    """Security review of PR #60: a path that isn't UTF-8, in the commit but not on disk, crashed the load midway."""
+    root = repo(tmp_path / "web")
+    decisions(root / "docs" / "adr", {"0007-avoid-axios.md": AVOID})
+    commit(root)
+    blob = git(root, "hash-object", "-w", str(root / "docs" / "adr" / "0007-avoid-axios.md"))
+    subprocess.run(  # noqa: S603 (a test repository, fixed arguments)
+        [  # noqa: S607
+            "git",
+            "-C",
+            str(root),
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"100644,{blob},".encode() + b"docs/adr/\xff.md",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    git(root, "commit", "-q", "-m", "a name that isn't UTF-8")  # not commit(): add -A would drop it again
+    tree = subprocess.run(["git", "-C", str(root), "ls-tree", "-r", "-z", "HEAD"], capture_output=True, check=True)  # noqa: S603, S607
+    assert b"\xff" in tree.stdout
+
+    report = service.ingest(graph, str(root), "team")
+
+    assert report.written + report.unchanged == 1
+    assert verdict(graph) == "BLOCK"
+
+
+def test_a_load_with_nothing_missing_asks_git_about_no_history(graph, tmp_path, monkeypatch):
+    """Security review of PR #60: one history question per recorded commit on every load made reloads slow."""
+    root = repo(tmp_path / "web")
+    decisions(root / "docs" / "adr", {"0007-avoid-axios.md": AVOID})
+    commit(root)
+    service.ingest(graph, str(root), "team")
+    asked = []
+    monkeypatch.setattr("precedent.connectors.folder.in_history", lambda repo, c: asked.append(c) or True)
+
+    service.ingest(graph, str(root), "team")
+
+    assert asked == []
+
+
 def test_a_deleted_symlinked_decision_file_stops_counting(graph, tmp_path):
     """The origin is the link's own path, so deleting the link retires the decision (design review of PR #60)."""
     root = repo(tmp_path / "web")
@@ -323,6 +490,7 @@ def test_a_deleted_symlinked_decision_file_stops_counting(graph, tmp_path):
 
     (folder / "0007-avoid-axios.md").unlink()
     (folder / "precedent.yaml").write_text("")
+    commit(root)
     service.ingest(graph, str(root), "team")
 
     assert verdict(graph) == "CLEAR"
