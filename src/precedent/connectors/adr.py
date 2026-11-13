@@ -6,7 +6,7 @@ marker and `:::note[Superseded]` block. Other text, including instructions aimed
 """
 
 import re
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from datetime import date
 from pathlib import Path
 from typing import NamedTuple
@@ -76,6 +76,24 @@ def records(folder: str, org: str, source: str | None = None) -> Iterator[Decisi
             scopes=tuple(declared.get(a.id, ())),
             sources=(SourceRef(url=str(a.path), kind="adr"),),
             decided_at=a.decided_at,
+        )
+
+
+def one_file_per_id(found: Iterable[tuple[str, str]]) -> None:
+    """Refuse a load in which two files would be the same decision (ADR0020). `found` is (decision id, file).
+
+    Links and precedent.yaml name a decision by its id, so two files with one id can't be told apart: the one saved
+    last would overwrite the other, and a rejected copy could retire the real decision. Files are shown as given
+    (a path inside the loaded folder, never one on this machine), with hidden or control characters spelled out.
+    """
+    files: dict[str, list[str]] = {}
+    for decision, file in found:
+        files.setdefault(decision, []).append(file if file.isprintable() else repr(file))
+    twice = [f"more than one file is {d} ({', '.join(sorted(f))})" for d, f in sorted(files.items()) if len(f) > 1]
+    if twice:
+        raise KnowledgeError(
+            "; ".join(twice) + ": rename one, so each decision has its own id and links and precedent.yaml can say"
+            " which one they mean"
         )
 
 

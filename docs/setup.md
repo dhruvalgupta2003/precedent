@@ -55,6 +55,11 @@ Use the built-in `fetch`. Do not add `node-fetch`.
 The number at the start of the file name is the decision's ID: `ADR0001`. The **Status** says whether it counts:
 `Accepted` means yes.
 
+Give each decision its own number. If two files in one folder have the same number (two pull requests both took
+`0012`, say), `precedent load` stops and names both files, because a link or `precedent.yaml` that says `ADR0012`
+can't tell them apart. Rename one, and move its links and `precedent.yaml` entries with it, then load again; until
+then, checks use the last load that worked.
+
 ## 3. Say what to look for
 
 Precedent needs to know what this decision means in code. Save this as `docs/adr/precedent.yaml`, in the same folder:

@@ -6,7 +6,10 @@ class PrecedentError(Exception):
 
 
 class KnowledgeError(PrecedentError):
-    """precedent.yaml has an entry that can't be trusted. Ingest stops: reviewed input is never half-applied."""
+    """The decisions as written can't be trusted: a bad precedent.yaml entry, or two decision files with one number.
+
+    Ingest stops before it writes anything: reviewed input is never half-applied.
+    """
 
 
 class ExtractionError(PrecedentError):
