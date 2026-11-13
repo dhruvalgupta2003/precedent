@@ -82,6 +82,22 @@ def database_path() -> Path:
     return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "precedent" / "precedent.db"
 
 
+def with_files(changes: list[Change], root: Path) -> list[Change]:
+    """Each change with its file as it is on disk, so pre-flight knows the names the file already imports (ADR0016).
+    Only files inside `root` are read: a diff's paths come from outside and could point anywhere."""
+    return [change._replace(context=_lines(root, change.path)) for change in changes]
+
+
+def _lines(root: Path, path: str) -> tuple[str, ...]:
+    file = (root / path).resolve()
+    if not file.is_relative_to(root.resolve()) or not file.is_file():
+        return ()
+    try:
+        return tuple(file.read_text(errors="replace").splitlines())
+    except OSError:  # unreadable: check the change without it, as if the file were new
+        return ()
+
+
 def preflight(graph: Graph, changes: list[Change]) -> Report:
     """Check a change against every live decision in the org's graph (docs/spec.md §7)."""
     return check(facts(changes), rules(graph))

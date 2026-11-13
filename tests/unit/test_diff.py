@@ -1,3 +1,5 @@
+import pytest
+
 from precedent.core.diff import Change, changes, facts
 
 
@@ -106,3 +108,43 @@ def test_a_line_moved_within_the_change_is_not_new():
     )
 
     assert facts(moved).packages == set()
+
+
+MOMENT_FILE = ("import moment from 'moment';", "", "export const shown = moment(day).format('L');")
+NEW_USES = [
+    ("a new call", MOMENT_FILE, ("const due = moment(day).add(3, 'days');",), (), {"moment"}),
+    ("an edited call", MOMENT_FILE, ("export const shown = moment(day).format('LL');",), MOMENT_FILE[2:], set()),
+    (
+        "a renamed named import",
+        ("import { duration as d } from 'moment';",),
+        ("const t = d(5, 'minutes');",),
+        (),
+        {"moment"},
+    ),
+    ("a namespace import", ("import * as m from 'moment';",), ("m.utc();",), (), {"moment"}),
+    ("a require", ("const moment = require('moment');",), ("moment();",), (), {"moment"}),
+    ("a python module", ("import requests",), ("requests.get(url)",), (), {"requests"}),
+    ("a python alias", ("import numpy as np",), ("np.zeros(3)",), (), {"numpy"}),
+    ("a python name", ("from requests import get as fetch",), ("fetch(url)",), (), {"requests"}),
+    ("only in a string or comment", MOMENT_FILE, ("log('moment is slow'); // moment",), (), set()),
+    ("a property of something else", MOMENT_FILE, ("clock.moment();",), (), set()),
+    ("a relative import", ("import util from './util';",), ("util();",), (), set()),
+    ("a file with no imports", (), ("moment();",), (), set()),
+]
+
+
+@pytest.mark.parametrize(
+    ("context", "added", "removed", "used"), [c[1:] for c in NEW_USES], ids=[c[0] for c in NEW_USES]
+)
+def test_new_uses_of_a_name_the_file_already_imports_are_found(context, added, removed, used):
+    assert facts([Change("src/a.ts", added, removed, context)]).used == used
+
+
+def test_a_package_imported_in_the_same_change_is_an_import_not_a_new_use():
+    f = facts([Change("src/a.ts", ("import moment from 'moment';", "moment();"), (), MOMENT_FILE)])
+
+    assert (f.packages, f.used) == ({"moment"}, set())
+
+
+def test_a_new_use_in_a_docs_file_is_not_code():
+    assert facts([Change("README.md", ("moment();",), (), MOMENT_FILE)]).used == set()

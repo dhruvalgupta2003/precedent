@@ -19,6 +19,7 @@ from precedent.surfaces.hook import change_from_tool, describe, response
 
 EXIT = {"CLEAR": 0, "WARN": 1, "BLOCK": 2}  # spec §9: CI-friendly
 HOOK_TOOLS = "Edit|Write|MultiEdit"
+GIT = partial(subprocess.run, capture_output=True, text=True, check=False)
 
 
 def org_name(value: str) -> str:
@@ -65,7 +66,8 @@ def run_ingest(args: argparse.Namespace) -> int:
 def run_check(args: argparse.Namespace) -> int:
     if args.hook:
         return _hook(args.org)
-    report = service.preflight(_graph(args.org), changes(_change_text(args.diff)))
+    found = service.with_files(changes(_change_text(args.diff)), _top() or Path.cwd())
+    report = service.preflight(_graph(args.org), found)
     print(report.model_dump_json(indent=2) if args.format == "json" else describe(report))
     return EXIT[report.verdict]
 
@@ -79,17 +81,22 @@ def _change_text(diff: str | None) -> str:
 
 def _working_changes() -> str:
     """`git diff HEAD`, plus new files git doesn't track yet as if every line were added. Paths are repo-relative."""
-    git = partial(subprocess.run, capture_output=True, text=True, check=False)
-    top = git(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
+    top = _top()
     if not top:
         raise PrecedentError("Not inside a git repository. Give a change with --diff FILE, or pipe a diff in.")
-    new = git(["git", "-C", top, "ls-files", "--others", "--exclude-standard", "-z"]).stdout.split("\0")
+    new = GIT(["git", "-C", top, "ls-files", "--others", "--exclude-standard", "-z"]).stdout.split("\0")
     added = (
-        f"+++ b/{p}\n" + "".join(f"+{line}\n" for line in (Path(top) / p).read_text(errors="replace").splitlines())
+        f"+++ b/{p}\n" + "".join(f"+{line}\n" for line in (top / p).read_text(errors="replace").splitlines())
         for p in new
         if p
     )
-    return git(["git", "-C", top, "diff", "HEAD"]).stdout + "".join(added)
+    return GIT(["git", "-C", top, "diff", "HEAD"]).stdout + "".join(added)
+
+
+def _top() -> Path | None:
+    """The git repository this runs in, if any."""
+    top = GIT(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
+    return Path(top) if top else None
 
 
 def run_hooks_install(args: argparse.Namespace) -> int:
@@ -127,8 +134,10 @@ def _at(source: str | None) -> str:
 def _hook(org: str) -> int:
     """Claude Code PreToolUse. Fails open: Precedent's own errors never block the agent (H3)."""
     try:
-        change = change_from_tool(json.load(sys.stdin))
-        out = response(service.preflight(_graph(org), [change])) if change else None
+        event = json.load(sys.stdin)
+        change = change_from_tool(event)
+        found = service.with_files([change], Path(event.get("cwd") or ".")) if change else []
+        out = response(service.preflight(_graph(org), found)) if change else None
     except Exception as exc:
         print(f"Precedent hook skipped: {exc}", file=sys.stderr)
         return 0

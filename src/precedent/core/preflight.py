@@ -4,7 +4,7 @@ Deterministic: the same facts and rules always give the same verdict. An LLM may
 """
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from collections.abc import Set as AbstractSet
 from fnmatch import fnmatch
 from typing import Literal
@@ -60,7 +60,7 @@ def check(facts: Facts, rules: Iterable[Rule]) -> Report:
     rules = list(rules)
     # Old guidance isn't dead while a live decision still prefers or requires the same thing.
     backed = {(r.scope.kind, r.scope.value) for r in rules if r.live and r.scope.polarity in ("prefer", "require")}
-    findings = tuple(f for rule in rules if _applies(rule.scope, facts) and (f := _finding(rule, backed)))
+    findings = tuple(f for rule in rules if (f := _finding_for(rule, facts, backed)))
     verdict: Verdict = "BLOCK" if any(f.blocks for f in findings) else "WARN" if findings else "CLEAR"
     return Report(verdict=verdict, findings=findings)
 
@@ -68,8 +68,7 @@ def check(facts: Facts, rules: Iterable[Rule]) -> Report:
 def matches(scope: Scope, facts: Facts) -> bool:
     value = scope.value
     if scope.kind == "package":
-        prefix = value + "/" if value.startswith("@") and "/" not in value else None
-        return value in facts.packages or bool(prefix and any(p.startswith(prefix) for p in facts.packages))
+        return _has_package(value, facts.packages)
     if scope.kind == "path":
         folder = value.rstrip("/") + "/"
         return any(fnmatch(path, value) or path.startswith(folder) for path in facts.paths)
@@ -81,6 +80,17 @@ def matches(scope: Scope, facts: Facts) -> bool:
     return in_paths or bool(re.search(rf"(?<![\w.]){re.escape(value)}(?![\w])", haystack))
 
 
+def uses(scope: Scope, facts: Facts) -> bool:
+    """The change uses the package through a name its file already imports (`Facts.used`)."""
+    return scope.kind == "package" and _has_package(scope.value, facts.used)
+
+
+def _has_package(value: str, packages: AbstractSet[str]) -> bool:
+    """`@scope` (a whole npm scope) covers `@scope/anything`."""
+    prefix = value + "/" if value.startswith("@") and "/" not in value else None
+    return value in packages or bool(prefix and any(p.startswith(prefix) for p in packages))
+
+
 def _imported_as(module: str, name: str, facts: Facts) -> bool:
     """`React.FC` written as `FC` from 'react', or as `R.FC` after `import * as R from 'react'`."""
     if (module, name) in facts.imported:
@@ -89,10 +99,21 @@ def _imported_as(module: str, name: str, facts: Facts) -> bool:
     return any(re.search(rf"(?<![\w.]){re.escape(a)}\.{re.escape(name)}(?!\w)", facts.code) for a in aliases)
 
 
-def _applies(scope: Scope, facts: Facts) -> bool:
+def _applies(scope: Scope, facts: Facts, match: Callable[[Scope, Facts], bool] = matches) -> bool:
     """The scope matches and no exception the source names (e.g. React.lazy) appears in the same change."""
     exceptions = (Scope(kind="symbol", value=code) for code in scope.unless)
-    return matches(scope, facts) and not any(matches(e, facts) for e in exceptions)
+    return match(scope, facts) and not any(matches(e, facts) for e in exceptions)
+
+
+def _finding_for(rule: Rule, facts: Facts, backed: AbstractSet[tuple[str, str]]) -> Finding | None:
+    """A new use in a file that already imports the package only warns (ADR0016): during a migration the old
+    code still gets edited, and a block there would stop ordinary work. A new import still blocks."""
+    if _applies(rule.scope, facts):
+        return _finding(rule, backed)
+    if not _applies(rule.scope, facts, uses) or not (found := _finding(rule, backed)):
+        return None
+    note = f"{found.message}; this adds a new use of {rule.scope.value} in a file that already imports it"
+    return found.model_copy(update={"blocks": False, "message": note})
 
 
 def _finding(rule: Rule, backed: AbstractSet[tuple[str, str]]) -> Finding | None:

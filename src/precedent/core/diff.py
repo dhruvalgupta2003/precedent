@@ -1,4 +1,5 @@
-"""Facts about a change: which files, and what the added lines import or depend on (docs/spec.md §7).
+"""Facts about a change: which files, what the added lines import or depend on (docs/spec.md §7), and which
+libraries they use through names the file already imports (ADR0016).
 
 Regex, not a parser: good enough to find imports and dependency lines, and cheap enough for a hook.
 Only net new lines count: removing a dependency is never a conflict, and a line moved within the same
@@ -15,6 +16,8 @@ JS_REEXPORT = re.compile(r"""^\s*export\s+(?:type\s+)?(?:\*(?:\s+as\s+\w+)?|\{[^
 JS_CALL = re.compile(r"""\b(?:require|import)\(\s*['"]([^'"]+)['"]\s*\)""")
 PY_IMPORT = re.compile(r"^\s*import\s+([\w.]+)")
 PY_FROM = re.compile(r"^\s*from\s+([\w.]+)\s+import\s+(.+)")
+PY_IMPORTS = re.compile(r"^\s*import\s+([\w.]+(?:\s+as\s+\w+)?(?:\s*,\s*[\w.]+(?:\s+as\s+\w+)?)*)\s*(?:#|$)")
+JS_REQUIRE = re.compile(r"""^\s*(?:const|let|var)\s+([\w$]+)\s*=\s*require\(\s*['"]([^'"]+)['"]\s*\)""")
 PACKAGE_JSON_DEP = re.compile(r'^\s*"(@?[\w.-]+(?:/[\w.-]+)?)"\s*:\s*"(?:[\^~<>=*\d]|workspace:|npm:|latest)')
 REQUIREMENT = re.compile(r"^\s*([A-Za-z0-9][\w.-]*)\s*(?:[<>=~!;\[]|$)")
 # Strings and comments aren't code: a log line or a TODO that names a symbol isn't using it.
@@ -28,6 +31,7 @@ class Change(NamedTuple):
     path: str
     added: tuple[str, ...]
     removed: tuple[str, ...] = ()
+    context: tuple[str, ...] = ()  # the file as it is on disk: for the names it already imports
 
 
 @dataclass(frozen=True)
@@ -38,6 +42,7 @@ class Facts:
     text: str  # every net new line, for config and plan matches
     code: str = ""  # the same without strings and comments, in canonical form: for symbol matches
     aliases: dict[str, str] = field(default_factory=dict)  # local name → module: `import * as R from 'react'`
+    used: frozenset[str] = frozenset()  # packages new lines use through a name their file already imports
 
 
 def changes(diff: str) -> list[Change]:
@@ -65,7 +70,66 @@ def facts(change_list: list[Change]) -> Facts:
     text = "\n".join(line for change in code_changes for line in change.added)
     code = EXPORT_AS_DEFAULT.sub(r"export default \1", NOT_CODE.sub(" ", text))
     paths = frozenset(c.path for c in change_list)
-    return Facts(paths, frozenset(packages), frozenset(imported), text, code, aliases)
+    used = set().union(*(_new_uses(c) for c in change_list if not c.path.lower().endswith(DOCS))) - packages
+    return Facts(paths, frozenset(packages), frozenset(imported), text, code, aliases, frozenset(used))
+
+
+def bindings(lines: tuple[str, ...]) -> dict[str, str]:
+    """Each name a file imports, and its package: `import m from 'moment'` binds m; `import numpy as np`, np."""
+    found = {}
+    for line in lines:
+        for name, module in _bound(line):
+            if not module.startswith("."):
+                found[name] = _package({module}).pop()
+    return found
+
+
+def _bound(line: str) -> list[tuple[str, str]]:
+    if m := JS_IMPORT.match(line):
+        return [(name, m["module"]) for name in _js_names(m["names"] or "")]
+    if m := JS_REQUIRE.match(line):
+        return [(m[1], m[2])]
+    return _python_bound(line)
+
+
+def _python_bound(line: str) -> list[tuple[str, str]]:
+    """`from x.y import a as b` binds b to x; `import x.y as z` binds z, and `import x.y` binds x."""
+    if m := PY_FROM.match(line):
+        top = m[1].split(".")[0]  # empty for a relative import, which isn't a package
+        return [(alias or name, top) for name, alias in re.findall(r"(\w+)(?:\s+as\s+(\w+))?", m[2])] if top else []
+    m = PY_IMPORTS.match(line)
+    modules = re.findall(r"([\w.]+)(?:\s+as\s+(\w+))?", m[1]) if m else []
+    return [(alias or module.split(".")[0], module.split(".")[0]) for module, alias in modules]
+
+
+def _js_names(names: str) -> list[str]:
+    """The local names: `d, { a, b as c }` gives d, a, c; `* as ns` gives ns."""
+    named = re.search(r"\{([^}]*)\}", names)
+    rest = re.findall(r"[A-Za-z_$][\w$]*", re.sub(r"\{[^}]*\}|\btype\b|\*\s*as\b", " ", names))
+    pairs = re.findall(r"([\w$]+)(?:\s+as\s+([\w$]+))?", re.sub(r"\btype\s", " ", named[1])) if named else []
+    return rest + [alias or name for name, alias in pairs]
+
+
+def _new_uses(change: Change) -> set[str]:
+    """Packages the added lines use through names the file already imports, like a new `moment(...)` call in a
+    file with `import moment from 'moment'`. Counted net of removed lines, so editing an existing use isn't new."""
+    names = bindings(change.context)
+    if not names:
+        return set()
+    added, removed = (NOT_CODE.sub(" ", "\n".join(_not_imports(lines))) for lines in (change.added, change.removed))
+    return {
+        package
+        for name, package in names.items()
+        if len(re.findall(_use(name), added)) > len(re.findall(_use(name), removed))
+    }
+
+
+def _not_imports(lines: tuple[str, ...]) -> list[str]:
+    return [line for line in lines if not _bound(line) and not JS_IMPORT.match(line)]
+
+
+def _use(name: str) -> str:
+    return rf"(?<![\w$.]){re.escape(name)}(?![\w$])"
 
 
 def _net_new(change_list: list[Change]) -> list[Change]:

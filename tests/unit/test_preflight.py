@@ -31,6 +31,7 @@ BACKSTAGE = [
     rule("backstage/ADR003", "symbol", "export default", "avoid", unless=("React.lazy",)),
     rule("backstage/ADR010", "package", "luxon", "prefer"),
     rule("backstage/ADR010", "package", "moment", "avoid"),
+    rule("backstage/ADR010", "package", "moment-timezone", "avoid"),  # declared in examples/backstage/precedent.yaml
     rule("backstage/ADR007", "package", "msw", "prefer"),
 ]
 # Every Backstage diff case, golden and real (R*), except P06: pattern detection the MVP may miss (spec §11).
@@ -43,7 +44,9 @@ DIFF_CASES = [
 
 @pytest.mark.parametrize("case", DIFF_CASES, ids=[c["id"] for c in DIFF_CASES])
 def test_golden_diffs_get_the_expected_verdict_and_decisions(case):
-    report = check(facts(changes(case["input"]["diff"])), BACKSTAGE)
+    files = case["input"].get("files", {})
+    found = [c._replace(context=tuple(files.get(c.path, "").splitlines())) for c in changes(case["input"]["diff"])]
+    report = check(facts(found), BACKSTAGE)
 
     assert report.verdict == case["expected"]["verdict"]
     assert {f.decision for f in report.findings} == set(case["expected"]["decisions"])
@@ -146,3 +149,30 @@ def test_a_symbol_used_through_an_alias_of_its_module_matches():
     namespace = Change("Badge.tsx", ("import * as R from 'react';", "export const Badge: R.FC<Props> = () => null;"))
 
     assert check(facts([namespace]), BACKSTAGE).verdict == "WARN"
+
+
+MOMENT_FILE = ("import moment from 'moment';", "export const shown = moment(day).format('L');")
+DECLARED_AVOID = rule("org/ADR2", "package", "moment", "avoid").model_copy(
+    update={"scope": Scope(kind="package", value="moment", polarity="avoid")}
+)
+
+
+def test_a_new_use_in_a_file_that_already_imports_an_avoided_package_warns_but_never_blocks():
+    """Legacy code still gets edited during a migration, so a rule that blocks a new import only warns here."""
+    report = check(facts([Change("src/a.ts", ("const due = moment(day);",), (), MOMENT_FILE)]), [DECLARED_AVOID])
+
+    assert report.verdict == "WARN"
+    assert not report.findings[0].blocks
+    assert "new use" in report.findings[0].message
+
+
+def test_editing_an_existing_use_is_not_a_new_one():
+    edit = Change("src/a.ts", ("export const shown = moment(day).format('LL');",), MOMENT_FILE[1:], MOMENT_FILE)
+
+    assert check(facts([edit]), [DECLARED_AVOID]).verdict == "CLEAR"
+
+
+def test_a_new_import_of_an_avoided_package_still_blocks_when_the_file_already_had_one():
+    adding = Change("src/b.ts", ("import moment from 'moment';", "moment();"), (), MOMENT_FILE)
+
+    assert check(facts([adding]), [DECLARED_AVOID]).verdict == "BLOCK"
