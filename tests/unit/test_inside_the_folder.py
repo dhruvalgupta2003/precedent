@@ -2,7 +2,7 @@
 
 Bug this guards: a symbolic link to a file outside the folder was followed, so text from anywhere on the machine
 could be stored as a decision's quote, or sent to the AI. precedent.yaml already refuses links for the same reason.
-Every way a link can lead out is tried, in a plain folder and in a git repository.
+Every way a symbolic link can lead out is tried, in a plain folder and in a git repository.
 """
 
 import os
@@ -18,8 +18,8 @@ ADR = f"# 7. Avoid axios\n\n## Status\n\nAccepted\n\n## Decision\n\nUse fetch. {
 NOTE = f"# Notes\n\nDecision: we do not use `axios`. {LEAK}\n"
 
 
-def link(at: Path, kind: str, outside: Path, inside: Path) -> None:
-    """Make `at` a symbolic link of this kind."""
+def link(at: Path, kind: str, outside: Path) -> None:
+    """Make `at` a symbolic link that leads out of the folder in this way."""
     at.parent.mkdir(parents=True, exist_ok=True)
     if kind == "absolute":
         at.symlink_to(outside)
@@ -31,8 +31,8 @@ def link(at: Path, kind: str, outside: Path, inside: Path) -> None:
         at.symlink_to(hop.name)
     elif kind == "dangling":
         at.symlink_to(outside.parent / "no-such-file.md")
-    else:  # inside: a link that stays in the folder is a normal file
-        at.symlink_to(inside)
+    else:
+        raise ValueError(kind)
 
 
 KINDS_OUT = ["absolute", "relative-up", "through-another-link", "dangling"]
@@ -53,11 +53,9 @@ def tree(request, tmp_path: Path) -> tuple[Path, Path]:
 def test_a_document_linked_from_outside_the_folder_is_never_read(tree, kind):
     root, outside = tree
     (outside / "notes.md").write_text(NOTE)
-    link(root / "docs" / "notes.md", kind, outside / "notes.md", root / "docs" / "real.md")
+    link(root / "docs" / "notes.md", kind, outside / "notes.md")
 
-    found = folder.markdown_files(root)
-
-    assert root / "docs" / "notes.md" not in found
+    assert folder.markdown_files(root) == []  # every link in the tree leads out, the in-between one included
 
 
 @pytest.mark.parametrize("kind", KINDS_OUT)
@@ -65,9 +63,9 @@ def test_a_decision_file_linked_from_outside_the_folder_is_never_read(tree, kind
     root, outside = tree
     (outside / "0007-avoid-axios.md").write_text(ADR)
     adrs = root / "docs" / "adr"
-    (adrs).mkdir(parents=True)
+    adrs.mkdir(parents=True)
     (adrs / "0001-keep.md").write_text(ADR.replace("7. Avoid axios", "1. Keep").replace(LEAK, ""))
-    link(adrs / "0007-avoid-axios.md", kind, outside / "0007-avoid-axios.md", adrs / "0001-keep.md")
+    link(adrs / "0007-avoid-axios.md", kind, outside / "0007-avoid-axios.md")
 
     records = list(adr.records(str(adrs), "team", root=root))
 

@@ -59,8 +59,8 @@ def markdown_files(root: Path) -> list[Path]:
     """Every .md under root, skipping dependency, build and hidden folders, and instruction files.
 
     In a git repository, git decides what's ignored (.gitignore); elsewhere every folder is walked. Symbolic links to
-    folders aren't followed, and a linked file counts only if its target is inside the folder, so loading never
-    reads anything outside it.
+    folders aren't followed, and a symbolic link to a file counts only if its target is inside the folder, so
+    loading never reads anything outside it.
     """
     listed = _git_files(root)
     files = listed if listed is not None else [here / f for here, _, names in root.walk() for f in names]

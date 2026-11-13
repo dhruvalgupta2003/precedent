@@ -145,7 +145,7 @@ def test_a_symlinked_decision_file_cannot_take_an_id_from_another_folder(graph, 
     (other / "0007-x.md").symlink_to(root / "docs" / "adr" / "0007-avoid-axios.md")
     (other / "0001-own.md").write_text(note(1))
 
-    report = service.ingest(graph, str(other), "team/pay")
+    report = service.ingest(graph, str(other), "team")
 
     assert report.written + report.unchanged == 1  # its own decision only, never the link
     assert verdict(graph) == "BLOCK"

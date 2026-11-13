@@ -321,7 +321,8 @@ def doctor(graph: Graph, project: str, read_stances: ScopeReader | None = None) 
 
 
 def _instruction_file(path: Path, root: Path) -> bool:
-    return path.is_file() and not {"node_modules", ".git"} & set(path.relative_to(root).parts)
+    """An instruction file of this project: a symbolic link that leads outside it is never read or quoted."""
+    return adr.inside(path, root) and not {"node_modules", ".git"} & set(path.relative_to(root).parts)
 
 
 def _with_scopes(record: DecisionRecord, read_scopes: ScopeReader, counts: Counter[str]) -> DecisionRecord:

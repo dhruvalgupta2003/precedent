@@ -51,7 +51,8 @@ def records(folder: str, org: str, source: str | None = None, root: Path | None 
     """One record per real ADR in the folder; templates and other files are skipped.
 
     `source` names the folder (e.g. "platform") so two folders that both start at ADR001 don't collide. Only files
-    inside `root` (the loaded folder; the decision folder itself by default) are read: a link out is skipped.
+    inside `root` (the loaded folder; the decision folder itself by default) are read: a symbolic link that leads
+    out is skipped.
     """
     prefix = f"{org}/{source}" if source else org
     limit = root or Path(folder)
@@ -101,8 +102,8 @@ def one_file_per_id(found: Iterable[tuple[str, str]]) -> None:
 
 
 def inside(path: Path, root: Path) -> bool:
-    """A real file whose target is inside the loaded folder. A link that leads out, or nowhere, is never read: its
-    text could be anything on this machine, and it would be stored as a quote or sent to the AI."""
+    """A real file whose target is inside the loaded folder. A symbolic link that leads out, or nowhere, is never
+    read: its text could be anything on this machine, and it would be stored as a quote or sent to the AI."""
     return path.is_file() and path.resolve().is_relative_to(root.resolve())
 
 
