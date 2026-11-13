@@ -26,6 +26,8 @@ jobs:
       - run: make typecheck     # ty
       - run: make test          # all layers in parallel + coverage gates
         env: { FALKORDB_URL: "redis://localhost:6379", CI: "true" }   # CI=true: no database is a failure, not a skip
+      - run: make test-integration   # the same graph tests on the built-in database (ADR0015)
+        env: { PRECEDENT_TEST_DB: "embedded", CI: "true" }
       - run: make eval EVAL_FLAGS="--summary $GITHUB_STEP_SUMMARY"   # golden suites, offline replay; fails on a regression
         env: { FALKORDB_URL: "redis://localhost:6379" }
 

@@ -16,12 +16,20 @@ tools from [See it in 2 minutes](try.md#before-you-start).
 ## 1. Install
 
 ```sh
-uv tool install git+https://github.com/dhruvalgupta2003/precedent
-docker run -d --name precedent-db -p 6380:6379 falkordb/falkordb:6.0.4
+uv tool install "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent"
 ```
 
-The first line installs the `precedent` command. The second starts the database. If you ran the 2-minute demo and
-its database is still running, skip the second line.
+This installs the `precedent` command with its own small database. There's nothing else to install or start.
+
+??? info "On Windows, or with a shared database for a team"
+
+    Run a FalkorDB server and tell Precedent where it is. With `FALKORDB_URL` set, Precedent always uses that server:
+
+    ```sh
+    uv tool install git+https://github.com/dhruvalgupta2003/precedent
+    docker run -d --name precedent-db -p 6380:6379 falkordb/falkordb:6.0.4
+    export FALKORDB_URL=redis://localhost:6380
+    ```
 
 ## 2. Write a decision
 

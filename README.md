@@ -27,12 +27,11 @@ It checks changes before an AI assistant edits a file, and on every pull request
 ## Try it
 
 The [2-minute guide](https://dhruvalgupta2003.github.io/precedent/try/) walks you through it step by step. If you
-already have [Docker](https://www.docker.com/products/docker-desktop/) and
-[uv](https://docs.astral.sh/uv/getting-started/installation/), it's four commands:
+already have [uv](https://docs.astral.sh/uv/getting-started/installation/) and git, it's three commands. No Docker:
+Precedent brings its own small database.
 
 ```sh
 git clone https://github.com/dhruvalgupta2003/precedent && cd precedent
-docker compose up -d
 uv run precedent load examples/backstage
 uv run precedent check --diff examples/changes/adds-moment-timezone.diff
 ```

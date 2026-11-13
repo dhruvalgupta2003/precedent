@@ -25,8 +25,13 @@ dependencies = [
 [project.scripts]
 precedent = "precedent.surfaces.cli:main"
 
+[project.optional-dependencies]
+# The built-in database (ADR0015): no Docker. Prebuilt for macOS and Linux with glibc 2.38+ (Ubuntu 24.04+).
+embedded = ["falkordblite>=0.11.0; sys_platform != 'win32'"]  # none for Windows: it falls back to a server
+
 [dependency-groups]
 dev = [
+    "falkordblite>=0.11.0; sys_platform != 'win32'",  # the demo and the embedded test run need it
     "codespell>=2.4.3",
     "deptry>=0.25.1",
     "hypothesis>=6.170.14",

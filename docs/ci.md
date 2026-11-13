@@ -32,16 +32,12 @@ permissions:
   contents: read
 jobs:
   precedent:
-    runs-on: ubuntu-latest
-    services:
-      falkordb:                          # the database, just for this check
-        image: falkordb/falkordb:6.0.4
-        ports: ["6380:6379"]
+    runs-on: ubuntu-latest               # Ubuntu 24.04: the built-in database works here
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with: { fetch-depth: 0, persist-credentials: false }
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
-      - run: uv tool install git+https://github.com/dhruvalgupta2003/precedent
+      - run: uv tool install "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent"
       - run: precedent load docs/adr
       - name: Stop on BLOCK, allow WARN
         env: { BASE: "${{ github.base_ref }}" }
@@ -53,6 +49,7 @@ Change `docs/adr` if your decision notes live somewhere else. That's all.
 - To also stop on **⚠️ take a look**, delete `|| test $? -eq 1` from the last line.
 - To let an AI suggest what to look for, add `PRECEDENT_MODEL_EXTRACT` and your AI provider's key to the `precedent
   load` step, from your repository's secrets.
+- No database to start: Precedent's built-in one runs inside the job.
 - For a stable setup, pin a release from the [releases page](https://github.com/dhruvalgupta2003/precedent/releases):
   add `@v` and its number to the end of the install URL.
 
@@ -61,9 +58,12 @@ Change `docs/adr` if your decision notes live somewhere else. That's all.
 Any CI system works. Precedent tells it the answer with an exit code: `0` all good, `1` take a look, `2` stop.
 
 ```sh
-docker run -d -p 6380:6379 falkordb/falkordb:6.0.4
+uv tool install "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent"
 precedent load docs/adr
 git diff origin/main...HEAD | precedent check
 ```
+
+On a Windows runner or an older Linux image, install without `[embedded]`, start a FalkorDB server
+(`docker run -d -p 6380:6379 falkordb/falkordb:6.0.4`) and set `FALKORDB_URL=redis://localhost:6380`.
 
 Add `--format json` if another tool needs to read the answer.

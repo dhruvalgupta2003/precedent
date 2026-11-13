@@ -10,7 +10,7 @@ from functools import partial
 from pathlib import Path
 
 import redis
-from falkordb import FalkorDB, Graph
+from falkordb import Graph
 
 from precedent import service
 from precedent.core.diff import changes
@@ -39,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.run(args)
     except redis.ConnectionError as exc:
-        print(f"No FalkorDB at {_url()}: {exc}. Start it with `docker compose up -d`.", file=sys.stderr)
+        print(_no_database(exc), file=sys.stderr)
         return 1
     except PrecedentError as exc:
         print(exc, file=sys.stderr)
@@ -181,9 +181,15 @@ def _org_option(command: argparse.ArgumentParser) -> None:
     )
 
 
-def _url() -> str:
-    return os.environ.get("FALKORDB_URL", "redis://localhost:6380")
+def _no_database(exc: Exception) -> str:
+    if url := os.environ.get("FALKORDB_URL"):
+        return f"No FalkorDB at {url}: {exc}. Is the server running?"
+    return (
+        "No database. Install Precedent with its built-in one:\n"
+        '  uv tool install --force "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent"\n'
+        "or start a FalkorDB server: docker run -d -p 6380:6379 falkordb/falkordb:6.0.4"
+    )
 
 
 def _graph(org: str) -> Graph:
-    return FalkorDB.from_url(_url()).select_graph(org)
+    return service.open_graph(org)

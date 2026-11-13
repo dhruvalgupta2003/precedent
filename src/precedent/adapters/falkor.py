@@ -1,11 +1,33 @@
 """FalkorDB adapter: the only module that talks to the graph database (ADR0002, ADR0009)."""
 
 from datetime import UTC, datetime
+from pathlib import Path
 
-from falkordb import Graph
+from falkordb import FalkorDB, Graph
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 
 from precedent.core.model import DecisionRecord, content_hash
 from precedent.core.preflight import Rule
+
+DEFAULT_URL = "redis://localhost:6380"  # a FalkorDB server run with Docker (6379 is often a local Redis)
+
+
+def connect(url: str | None, path: Path) -> FalkorDB:
+    """The database to use (ADR0015): the server at `url` when one is set; otherwise the built-in database in the
+    file at `path` when precedent[embedded] is installed; otherwise a local server on the default port.
+    """
+    if url:
+        return FalkorDB.from_url(url)
+    try:
+        from redislite.falkordb_client import FalkorDB as BuiltIn  # noqa: PLC0415 (optional: precedent[embedded])
+    except ImportError:
+        return FalkorDB.from_url(DEFAULT_URL)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # No retries: the server is a local file socket, so a dropped connection means it stopped. With retries, stopping
+    # it at exit (SHUTDOWN closes the socket) took ~2.5 s of back-off in every process, so every hook call was slow.
+    return BuiltIn(str(path), retry=Retry(NoBackoff(), 0))
+
 
 # The properties we look nodes up by (docs/spec.md §4), with the statement that indexes each one.
 INDEXES = {
@@ -50,7 +72,7 @@ FOREACH (src IN $sources |
 # leaves stale stances live behind a saved hash.
 RETIRE_STALE_STANCES = """
 MATCH (d:Decision {id: $id})-[a:APPLIES_TO]->(w:Scope)
-WHERE a.invalid_at IS NULL AND NOT w.kind + ':' + w.value + ':' + a.polarity IN $stances
+WHERE a.invalid_at IS NULL AND NOT ((w.kind + ':' + w.value + ':' + a.polarity) IN $stances)
 SET a.invalid_at = $now
 """
 # A decision found in an ordinary document (ADR0014) that its document no longer states is retired, not deleted.

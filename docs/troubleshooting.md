@@ -2,24 +2,26 @@
 
 Click a problem to see the fix.
 
-??? failure "It says `No FalkorDB at redis://localhost:6380`"
+??? failure "It says `No database`"
 
-    The database isn't running.
-
-    1. Open **Docker Desktop** and wait until it says it's running.
-    2. Start the database again:
-
-        ```sh
-        docker start precedent-db      # if you set it up with docker run
-        docker compose up -d           # if you're in the precedent folder (the 2-minute demo)
-        ```
-
-    Something else is using port 6380? Start the database on another port, and tell Precedent:
+    Precedent was installed without its built-in database. Install it again with it:
 
     ```sh
-    docker run -d --name precedent-db -p 6390:6379 falkordb/falkordb:6.0.4
-    export FALKORDB_URL=redis://localhost:6390
+    uv tool install --force "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent"
     ```
+
+    On Windows there is no built-in database: use a server, as [Set it up](setup.md#1-install) explains.
+
+??? failure "It says `No FalkorDB at …`"
+
+    You set `FALKORDB_URL`, so Precedent uses that server, but nothing answers there. Start it (for example
+    `docker start precedent-db`), or remove `FALKORDB_URL` to use the built-in database.
+
+??? failure "Installing fails while building `falkordblite`"
+
+    The built-in database has ready-made packages for macOS and for Linux from Ubuntu 24.04 on. On older Linux, install
+    without it (`uv tool install git+https://github.com/dhruvalgupta2003/precedent`) and use a server, as
+    [Set it up](setup.md#1-install) explains.
 
 ??? question "`precedent check` always says all good (CLEAR)"
 

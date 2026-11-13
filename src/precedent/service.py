@@ -8,8 +8,7 @@ from typing import Literal, NamedTuple
 
 from falkordb import Graph
 
-from precedent.adapters.falkor import ensure_schema, found_urls, retire_found, rules, save_decision
-from precedent.adapters.llm import scope_reader
+from precedent.adapters.falkor import connect, ensure_schema, found_urls, retire_found, rules, save_decision
 from precedent.connectors import adr, folder
 from precedent.core.diff import Change, facts
 from precedent.core.doctor import StaleLine, mentions, stale_lines
@@ -71,6 +70,18 @@ def _inside(url: str, under: str) -> bool:
     return url.startswith(under) if under else not url.startswith(("/", "../"))
 
 
+def open_graph(org: str) -> Graph:
+    """The org's graph: on the server at FALKORDB_URL, else in the built-in database (ADR0015)."""
+    return connect(os.environ.get("FALKORDB_URL"), database_path()).select_graph(org)
+
+
+def database_path() -> Path:
+    """Where the built-in database keeps its file: $PRECEDENT_DB, else the user's data folder."""
+    if path := os.environ.get("PRECEDENT_DB"):
+        return Path(path)
+    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "precedent" / "precedent.db"
+
+
 def preflight(graph: Graph, changes: list[Change]) -> Report:
     """Check a change against every live decision in the org's graph (docs/spec.md §7)."""
     return check(facts(changes), rules(graph))
@@ -79,7 +90,12 @@ def preflight(graph: Graph, changes: list[Change]) -> Report:
 def default_scope_reader(kind: Literal["adr", "instructions"] = "adr") -> ScopeReader | None:
     """The configured extraction model (PRECEDENT_MODEL_EXTRACT), or None to work without AI."""
     model = os.environ.get("PRECEDENT_MODEL_EXTRACT")
-    return scope_reader(model, cache_dir=extract_cache_dir(), kind=kind) if model else None
+    if not model:
+        return None
+    # Imported here: the AI library takes ~0.35 s to load, and the hook, which never uses it, runs on every edit.
+    from precedent.adapters.llm import scope_reader  # noqa: PLC0415
+
+    return scope_reader(model, cache_dir=extract_cache_dir(), kind=kind)
 
 
 def extract_cache_dir() -> Path:
