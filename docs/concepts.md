@@ -66,6 +66,34 @@ Nothing is against it. Precedent says nothing.
 
 Every answer quotes the decision's own words and says which note it comes from, so anyone can check it.
 
+## Which rule wins
+
+Often several decisions talk about the same thing. Precedent settles it the same way every time. The first rule
+that tells two decisions apart decides:
+
+1. **Only decisions in force count.** One that was replaced, rejected or retired never wins.
+2. **The newer decision that says it replaces another wins.**
+3. **Reviewed beats unreviewed.** An accepted decision note, or an entry in `precedent.yaml`, beats a proposed
+   decision or anything an AI read. So an AI can never weaken a rule a person approved.
+4. **Otherwise, they disagree.** Precedent never picks one by date or by which file is closer. It names both
+   decisions and asks a person to decide. Record the answer as a new decision that replaces the other.
+
+While they disagree, the safer side holds: if a reviewed decision says to avoid it, the change stops; otherwise
+Precedent warns. So a new file that only claims the opposite can never unblock what the team forbade. To see the
+order for anything, run `precedent why`:
+
+<div class="pc-terminal" markdown>
+
+```text
+moment (package): team/ADR0002 wins.
+- team/ADR0002 · avoid · wins: reviewed and in force · decided 2026-03-02
+    "we moved to Luxon (precedent.yaml)" (decisions/0002-use-luxon.md)
+- team/ADR0001 · prefer · replaced: replaced by team/ADR0002 · decided 2025-01-10
+    "our first date library (precedent.yaml)" (decisions/0001-use-moment.md)
+```
+
+</div>
+
 ## Where it checks
 
 | Where | What happens | How to turn it on |

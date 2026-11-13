@@ -6,11 +6,12 @@ from functools import partial
 
 import pytest
 
+from precedent.core.authority import Rule, Standing
 from precedent.core.doctor import StaleLine
 from precedent.core.errors import KnowledgeError
 from precedent.core.model import Scope
 from precedent.core.preflight import Finding, Report
-from precedent.service import IngestReport
+from precedent.service import IngestReport, Readers
 from precedent.surfaces.cli import main
 
 EVENT = {"tool_name": "Write", "tool_input": {"file_path": "/r/a.ts", "content": "x"}, "cwd": "/r"}
@@ -294,3 +295,45 @@ def test_with_claude_but_no_claude_code_installed_exits_1_and_says_why(tmp_path,
 
     assert main(["load", str(tmp_path), "--with", "claude"]) == 1
     assert "Claude Code" in capsys.readouterr().err
+
+
+def test_why_prints_the_winner_and_each_reason(monkeypatch, capsys):
+    rule = Rule(
+        decision="team/ADR0002",
+        title="2. Use Luxon",
+        status="accepted",
+        tier="structured",
+        confirmed=True,
+        scope=Scope(kind="package", value="moment", polarity="avoid", quote="we moved to Luxon"),
+        source="decisions/0002-use-luxon.md",
+    )
+    monkeypatch.setattr(
+        "precedent.service.why",
+        lambda graph, name: {("package", "moment"): [Standing(rule, "wins", "reviewed and in force")]},
+    )
+
+    assert main(["why", "moment"]) == 0
+    out = capsys.readouterr().out
+    assert "team/ADR0002 wins" in out
+    assert "reviewed and in force" in out
+    assert '"we moved to Luxon"' in out
+
+
+def test_why_about_something_nobody_decided_says_so_and_exits_1(monkeypatch, capsys):
+    monkeypatch.setattr("precedent.service.why", lambda graph, name: {})
+
+    assert main(["why", "graphql"]) == 1
+    assert "No recorded decision about graphql" in capsys.readouterr().out
+
+
+def test_load_with_ai_sums_up_what_the_ai_read(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("precedent.service.readers", lambda model=None: Readers(adrs=lambda text: []))
+    monkeypatch.setattr(
+        "precedent.service.ingest", lambda *args: IngestReport(written=1, scopes=1, dropped=2, failed=1)
+    )
+
+    assert main(["load", str(tmp_path)]) == 0
+    assert (
+        "The AI found 1 thing to look for; skipped 2 not quoted word for word or not naming code; 1 file failed."
+        in (capsys.readouterr().out)
+    )

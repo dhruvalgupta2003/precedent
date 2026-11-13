@@ -9,39 +9,17 @@ from collections.abc import Set as AbstractSet
 from fnmatch import fnmatch
 from typing import Literal
 
+from precedent.core.authority import Rule, resolve
 from precedent.core.diff import Facts
-from precedent.core.model import Frozen, Scope, Status, Tier
+from precedent.core.model import Frozen, Scope
+
+__all__ = ["Finding", "Report", "Rule", "Verdict", "check", "matches", "uses"]
 
 Verdict = Literal["BLOCK", "WARN", "CLEAR"]
 
 
-class Rule(Frozen):
-    """One decision's stance on one scope, as stored in the graph."""
-
-    decision: str
-    title: str
-    status: Status | None
-    tier: Tier
-    confirmed: bool
-    scope: Scope
-    superseded_by: tuple[str, ...] = ()
-    needs_review: bool = False
-    source: str | None = None
-
-    @property
-    def live(self) -> bool:
-        """Accepted or proposed, and not replaced. Proposed decisions may warn, never block."""
-        return self.status in ("accepted", "proposed") and not self.superseded_by
-
-    @property
-    def may_block(self) -> bool:
-        """ADR0004: accepted, confirmed, from a structured source or approved capture, scope not AI-read."""
-        structured = self.tier in ("structured", "capture") and not self.scope.extracted
-        return self.live and self.status == "accepted" and self.confirmed and structured
-
-
 class Finding(Frozen):
-    kind: Literal["conflict", "superseded"]
+    kind: Literal["conflict", "superseded", "disagreement"]
     decision: str
     scope: Scope
     message: str
@@ -49,6 +27,7 @@ class Finding(Frozen):
     successor: str | None = None
     quote: str | None = None
     source: str | None = None
+    disputed_with: tuple[str, ...] = ()  # a disagreement: the decisions on the other side (ADR0018)
 
 
 class Report(Frozen):
@@ -60,7 +39,11 @@ def check(facts: Facts, rules: Iterable[Rule]) -> Report:
     rules = list(rules)
     # Old guidance isn't dead while a live decision still prefers or requires the same thing.
     backed = {(r.scope.kind, r.scope.value) for r in rules if r.live and r.scope.polarity in ("prefer", "require")}
-    findings = tuple(f for rule in rules if (f := _finding_for(rule, facts, backed)))
+    ranked = resolve(rules)  # ADR0018: a stance that lost, or that is disputed, never speaks on its own
+    quiet = {s.rule for standings in ranked.values() for s in standings if s.outcome in ("outranked", "disputed")}
+    findings = [f for rule in rules if rule not in quiet and (f := _finding_for(rule, facts, backed))]
+    findings += [f for standings in ranked.values() if (f := _disagreement(standings, facts))]
+    findings = tuple(findings)
     verdict: Verdict = "BLOCK" if any(f.blocks for f in findings) else "WARN" if findings else "CLEAR"
     return Report(verdict=verdict, findings=findings)
 
@@ -133,6 +116,31 @@ def _finding(rule: Rule, backed: AbstractSet[tuple[str, str]]) -> Finding | None
         message = f"{rule.decision} ({scope.polarity} {scope.value}) was replaced by {successor}"
         return _found(rule, "superseded", message, successor=successor)
     return None
+
+
+def _disagreement(standings: list, facts: Facts) -> Finding | None:
+    """Decisions in force that disagree about something this change touches: one finding that names them all.
+
+    It blocks when a reviewed decision says to avoid it: a disagreement must never weaken a reviewed block, or one new
+    accepted-looking file anywhere in the loaded folder could unblock what the team forbade. The safer side holds
+    until a person settles it (ADR0018).
+    """
+    disputed = sorted((s.rule for s in standings if s.outcome == "disputed"), key=lambda r: r.decision)
+    if not disputed or not any(_applies(r.scope, facts) or _applies(r.scope, facts, uses) for r in disputed):
+        return None
+    first, others = disputed[0], disputed[1:]
+    sides = " and ".join(f"{r.decision} ({r.scope.polarity} {r.scope.value})" for r in disputed)
+    message = f"{sides} disagree, and neither replaces the other"
+    return Finding(
+        kind="disagreement",
+        decision=first.decision,
+        scope=first.scope,
+        message=message,
+        quote=first.scope.quote,
+        source=first.source,
+        disputed_with=tuple(r.decision for r in others),
+        blocks=any(r.may_block and r.scope.polarity == "avoid" for r in disputed),
+    )
 
 
 def _found(rule: Rule, kind: Literal["conflict", "superseded"], message: str, **extra: bool | str) -> Finding:

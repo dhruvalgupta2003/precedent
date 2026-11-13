@@ -248,3 +248,24 @@ def test_a_linked_knowledge_file_is_refused_so_errors_cant_echo_another_file(tmp
 
     with pytest.raises(KnowledgeError, match="not a link"):
         list(adr.records(str(adrs), "backstage"))
+
+
+@pytest.mark.parametrize(
+    ("text", "decided"),
+    [
+        ("---\ntitle: 'ADR0001: X'\ndate: 2026-03-02\nstatus: accepted\n---\nBody.\n", "2026-03-02"),
+        ("# 1. X\n\nDate: 2026-03-02\n\n## Status\n\nAccepted\n", "2026-03-02"),
+        ("# X\n\n* Status: accepted\n* Date: 2026-03-02\n\n## Decision\n\nUse X.\n", "2026-03-02"),
+        ("# 1. X\n\nDate: last spring\n\n## Status\n\nAccepted\n", None),
+        ("# 1. X\n\n## Status\n\nAccepted\n", None),
+        ("---\ntitle: 'ADR0001: X'\ndate: 2026-03-02 10:30:00\n---\nBody.\n", "2026-03-02"),
+        ("---\ntitle: 'ADR0001: X'\ndate: 2026-13-40\n---\nBody.\n", None),
+    ],
+    ids=["front matter", "adr-tools line", "madr bullet", "not a date", "no date", "with a time", "impossible date"],
+)
+def test_the_date_a_decision_was_made_comes_from_the_adr(tmp_path, text, decided):
+    (tmp_path / "0001-x.md").write_text(text)
+
+    [record] = adr.records(str(tmp_path), "team")
+
+    assert (record.decided_at.isoformat() if record.decided_at else None) == decided
