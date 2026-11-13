@@ -7,13 +7,14 @@ this load, then random graphs of earlier loads.
 """
 
 from itertools import product
+from typing import NamedTuple
 
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from precedent.core.model import Origin
-from precedent.core.origin import Reach, clashes, covers, gone, repo_name
+from precedent.core.origin import Earlier, Proof, Reach, clashes, covers, repo_name, retired
 
 # ---------- 1. naming a repository from its remote URL ----------
 
@@ -21,6 +22,8 @@ HOSTS = [("github.com", "github.com"), ("GitHub.com", "github.com"), ("gitlab.ex
 PATHS = [("acme/web", "acme/web"), ("Acme/Web", "acme/web"), ("group/sub/web", "group/sub/web")]
 ENDINGS = ["", ".git", "/", ".git/"]
 CREDENTIALS = ["", "git@", "alice@", "alice:s3cret@", "x-access-token:ghp_abcdef123456@", "oauth2:glpat-xyz@"]
+AFTER = ["", "?private_token=abc123", "#readme"]  # a query string can carry a token too (design review of PR #60)
+SECRETS = ("s3cret", "ghp_", "glpat", "alice", "private_token", "abc123", "@", ":", "?", "#")
 
 
 def forms(host: str, path: str, ending: str, who: str) -> list[str]:
@@ -32,15 +35,30 @@ def forms(host: str, path: str, ending: str, who: str) -> list[str]:
 
 
 def test_every_form_of_a_remote_names_the_same_repository_and_never_keeps_a_credential():
-    """3 hosts x 3 paths x 4 endings x 6 credentials, each in every form git writes: 1,152 URLs."""
+    """3 hosts x 3 paths x 4 endings x 6 credentials x 3 tails, each in every form git writes (5 forms, or 4 for a
+    host with a port): 3,024 URLs."""
     seen = 0
-    for (host, want_host), (path, want_path), ending, who in product(HOSTS, PATHS, ENDINGS, CREDENTIALS):
-        for url in forms(host, path, ending, who):
+    for (host, want_host), (path, want_path), ending, who, after in product(HOSTS, PATHS, ENDINGS, CREDENTIALS, AFTER):
+        for url in forms(host, path, ending + after, who):
             name = repo_name(url)
             assert name == f"{want_host}/{want_path}", url
-            assert all(secret not in name for secret in ("s3cret", "ghp_", "glpat", "alice", "@", ":")), url
+            assert all(secret not in name for secret in SECRETS), url
             seen += 1
-    assert seen > 1000
+    assert seen == 3024
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "git@ssh.dev.azure.com:v3/acme/shop/web",
+        "ssh://git@ssh.dev.azure.com/v3/acme/shop/web",
+        "https://acme@dev.azure.com/acme/shop/_git/web",
+        "https://dev.azure.com/acme/shop/_git/web",
+    ],
+)
+def test_azure_devops_ssh_and_https_remotes_name_one_repository(url):
+    """Azure DevOps writes the same repository two ways, so a laptop and CI would otherwise disagree."""
+    assert repo_name(url) == "dev.azure.com/acme/shop/web"
 
 
 @pytest.mark.parametrize(
@@ -51,6 +69,8 @@ def test_every_form_of_a_remote_names_the_same_repository_and_never_keeps_a_cred
         "../web",
         "./web.git",
         "C:\\repos\\web",
+        "C:/repos/web",
+        "c:/repos/web.git",
         "",
         "   ",
         "https://",
@@ -65,7 +85,7 @@ def test_a_remote_that_is_a_path_on_this_machine_or_empty_names_no_repository(ur
 @given(st.text())
 def test_any_text_either_names_a_repository_without_a_credential_or_nothing(url):
     name = repo_name(url)
-    assert name is None or ("@" not in name and ":" not in name and name == name.lower() and "/" in name)
+    assert name is None or (not any(c in name for c in "@:?#") and name == name.lower() and "/" in name)
 
 
 # ---------- 2. what one load owns, and when it would take another's decision ----------
@@ -151,30 +171,110 @@ def test_a_decision_with_no_origin_is_owned_by_no_load():
     assert covers(Reach(WEB, ""), None) is False
 
 
-def test_a_decision_this_load_owns_but_did_not_load_is_gone():
-    earlier = [
-        ("team/ADR0007", Origin(repo=WEB, path="docs/adr/0007-a.md")),  # loaded again
-        ("team/ADR0042", Origin(repo=WEB, path="docs/adr/0042-b.md")),  # file deleted
-        ("team/ADR0050", Origin(repo=WEB, path="services/adr/0050.md")),  # outside this load's folder
-        ("team/ADR0060", Origin(repo=PAY, path="docs/adr/0060.md")),  # another repository
-        ("team/ADR0070", None),  # no origin
-    ]
+def test_a_clash_message_spells_out_hidden_characters():
+    """Security review of PR #60: a folder name with an escape sequence must not reach the terminal as is."""
+    found = clashes(
+        [("team/ADR0007", Origin(repo=WEB, path="docs\x1b[2Kadr/0007.md"))],
+        [("team/ADR0007", Origin(repo=PAY, path="adr/0007.md"))],
+        Reach(WEB, ""),
+    )
 
-    assert gone(earlier, {"team/ADR0007"}, Reach(WEB, "docs/adr/")) == ["team/ADR0042"]
+    assert "\x1b" not in found[0]
+    assert "'docs\\x1b[2Kadr/0007.md'" in found[0]
 
 
-# ---------- 3. any history of earlier loads ----------
+# ---------- 3. retiring only what this checkout can prove is gone ----------
+
+PLACES = {  # where an earlier decision's file was, relative to a load of docs/adr/ in WEB
+    "in-folder": Origin(repo=WEB, path="docs/adr/0042.md"),
+    "other-folder": Origin(repo=WEB, path="services/adr/0042.md"),
+    "other-repo": Origin(repo=PAY, path="docs/adr/0042.md"),
+    "no-origin": None,
+}
+COMMITS = {"in-history": "c1", "not-in-history": "c9", "never-committed": None}
+REACH = Reach(WEB, "docs/adr/")
+
+
+class Case(NamedTuple):
+    place: str
+    read: bool
+    missing: bool
+    commit: str
+    loaded: bool
+
+    def name(self) -> str:
+        flags = ("read" if self.read else "unread", "missing" if self.missing else "present", self.commit)
+        return "-".join((self.place, *flags, "loaded" if self.loaded else "not-loaded"))
+
+
+def should_retire(case: Case) -> bool:
+    """ADR0021, written out: only a decision this load owns and didn't load, whose file it read again under another
+    id, or whose file is missing here and was committed in this checkout's history."""
+    owned = case.place == "in-folder" and not case.loaded
+    return owned and (case.read or (case.missing and case.commit == "in-history"))
+
+
+CASES = [Case(*c) for c in product(PLACES, (True, False), (True, False), COMMITS, (True, False))]
+
+
+@pytest.mark.parametrize("case", CASES, ids=[c.name() for c in CASES])
+def test_a_decision_is_retired_only_when_this_checkout_proves_its_file_is_gone(case):
+    """4 places x read again x missing x 3 commits x loaded = 96 cases."""
+    origin = PLACES[case.place]
+    path = origin.path if origin else "docs/adr/0042.md"
+    proof = Proof(
+        read=frozenset({path} if case.read else ()),
+        missing=frozenset({path} if case.missing else ()),
+        history=frozenset({"c1"}),
+    )
+    kept = {"team/ADR0042"} if case.loaded else set()
+
+    got = retired([Earlier("team/ADR0042", origin, COMMITS[case.commit])], kept, REACH, proof)
+
+    assert got == (["team/ADR0042"] if should_retire(case) else [])
+
+
+def test_a_file_in_a_folder_the_load_skipped_is_not_proof_of_anything():
+    """Security review of PR #60: `precedent load .` skips .github/; the file is still there, so nothing retires."""
+    earlier = [Earlier("team/ADR0007", Origin(repo=WEB, path=".github/adr/0007.md"), "c1")]
+
+    assert retired(earlier, set(), Reach(WEB, ""), Proof(frozenset(), frozenset(), frozenset({"c1"}))) == []
+
+
+def test_an_older_branch_cant_prove_a_later_decision_was_deleted():
+    earlier = [Earlier("team/ADR0007", Origin(repo=WEB, path="docs/adr/0007.md"), "later")]
+    proof = Proof(frozenset(), frozenset({"docs/adr/0007.md"}), frozenset({"older"}))
+
+    assert retired(earlier, set(), REACH, proof) == []
+
+
+def test_a_file_read_again_under_a_new_id_retires_the_old_id():
+    """After --source, or a second decision folder, the same file has a new id: the old one is retired and freed."""
+    earlier = [Earlier("team/ADR0007", Origin(repo=WEB, path="docs/adr/0007.md"), None)]
+    proof = Proof(frozenset({"docs/adr/0007.md"}), frozenset(), frozenset())
+
+    assert retired(earlier, {"team/web/ADR0007"}, REACH, proof) == ["team/ADR0007"]
+
+
+# ---------- 4. any history of earlier loads ----------
 
 REPOS = [WEB, PAY]
 FILES = ["docs/adr/0001.md", "docs/adr/0007.md", "docs/adr-old/0007.md", "services/adr/0007.md", "0007.md"]
 
 
 @st.composite
-def histories(draw: st.DrawFn) -> tuple[list[tuple[str, Origin | None]], list[tuple[str, Origin]], Reach]:
-    """Decisions already in the graph, the decisions this load reads (all from its own folder), and its reach."""
+def histories(draw: st.DrawFn) -> tuple[list[Earlier], list[tuple[str, Origin]], Reach, Proof]:
+    """Decisions already in the graph, the decisions this load reads (all from its own folder), its reach, and what
+    this checkout can prove."""
     ids = [f"team/ADR{n:04d}" for n in range(1, 6)]
     origins = st.none() | st.builds(Origin, repo=st.sampled_from(REPOS), path=st.sampled_from(FILES))
-    earlier = draw(st.lists(st.tuples(st.sampled_from(ids), origins), unique_by=lambda e: e[0], max_size=5))
+    earlier = draw(
+        st.lists(
+            st.builds(Earlier, st.sampled_from(ids), origins, st.sampled_from([None, "c1", "c2"])),
+            unique_by=lambda e: e.decision,
+            max_size=5,
+        )
+    )
     reach = Reach(draw(st.sampled_from(REPOS)), draw(st.sampled_from(["", "docs/adr/", "services/"])))
     mine = [f for f in FILES if f.startswith(reach.under)]
     loading = draw(
@@ -182,19 +282,32 @@ def histories(draw: st.DrawFn) -> tuple[list[tuple[str, Origin | None]], list[tu
         if mine
         else st.just([])
     )
-    return earlier, [(i, Origin(repo=reach.repo, path=p)) for i, p in loading], reach
+    proof = Proof(
+        frozenset(p for _, p in loading),
+        frozenset(draw(st.lists(st.sampled_from(FILES)))),
+        frozenset(draw(st.lists(st.sampled_from(["c1", "c2"])))),
+    )
+    return earlier, [(i, Origin(repo=reach.repo, path=p)) for i, p in loading], reach, proof
 
 
-@settings(max_examples=500)
+@settings(max_examples=1000)
 @given(histories())
 def test_a_load_never_retires_or_takes_a_decision_it_doesnt_own(history):
-    earlier, loading, reach = history
-    retired = gone(earlier, {i for i, _ in loading}, reach)
-    refused = clashes(loading, earlier, reach)
+    """Rules that hold whatever happened before, checked without re-stating how ownership is computed."""
+    earlier, loading, reach, proof = history
     loaded_ids = {i for i, _ in loading}
+    gone = set(retired(earlier, loaded_ids, reach, proof))
+    refused = {m.split(" ", 1)[0] for m in clashes(loading, [(e.decision, e.origin) for e in earlier], reach)}
+    where = {e.decision: e for e in earlier}
 
-    for decision, origin in earlier:
-        owned = origin is not None and origin.repo == reach.repo and origin.path.startswith(reach.under)
-        assert (decision in retired) == (owned and decision not in loaded_ids)
-        takes = decision in loaded_ids and origin is not None and not owned and dict(loading)[decision] != origin
-        assert any(m.startswith(f"{decision} ") for m in refused) == takes
+    assert gone.isdisjoint(loaded_ids)  # nothing this load reads is retired by it
+    assert refused <= loaded_ids  # only ids this load wants can be refused
+    for decision in gone:
+        _, origin, commit = where[decision]
+        assert origin is not None  # a decision of unknown origin is never retired
+        assert origin.repo == reach.repo  # never another repository's
+        assert origin.path.startswith(reach.under)  # never outside the loaded folder
+        assert origin.path in proof.read or (origin.path in proof.missing and commit in proof.history)  # proven
+    for decision in refused:
+        assert where[decision].origin is not None  # a decision of unknown origin is never refused
+        assert where[decision].origin != dict(loading)[decision]  # the same file loading again is never refused

@@ -11,36 +11,48 @@ both make `team/ADR0007`, and the one loaded last overwrote the other's status. 
 #59 also showed that a deleted decision file kept its stances and "replaces" links forever: deleting the decision
 that replaced ADR0007 left ADR0007 replaced, and its block lifted.
 
+A first version retired every decision under the loaded folder that the load didn't read. Its security review
+showed that a load doesn't read everything under its folder (hidden and build folders are skipped), and that an
+older branch, a shallow clone or a container at the same path doesn't have every file either: each of those lifted
+blocks whose files still existed.
+
 ## Decision
-1. Every decision loaded from a decision file records its origin: the repository and the file inside it. The
-   repository is `PRECEDENT_REPO`, else the git remote `origin` as `host/owner/name` (lower case, with no scheme,
-   port, `.git` or credential, so a laptop's ssh remote and CI's https remote agree and no token reaches the graph),
-   else `local`, with paths from the top of this machine's file system.
+1. Inside a git repository with a name, every decision loaded from a decision file records its origin: the
+   repository and the file's path inside it. The name is the `origin` remote as `host/owner/name` (lower case, no
+   scheme, port, `.git`, query or credential; Azure DevOps' two forms agree), else `PRECEDENT_REPO` for a repository
+   without one, normalised the same way. The path is git's path to the loaded folder plus the file's path inside
+   it, never a resolved path. Outside such a repository decisions keep no origin, and nothing below applies.
 2. A load owns the decision files under the folder it loaded, in its repository.
-3. A load may take a decision id only from a file it owns. If the id is already loaded from a file in another
-   repository, or in a folder of this repository outside the load, the load stops before writing anything, names
-   both files and suggests `--source`. A file renamed or moved inside the loaded folder keeps its decision.
-4. A decision the load owns but didn't load (its file was deleted, renamed or moved) stops counting: its stances and
-   "replaces" links get `invalid_at` and stay as history (spec §4). If the file returns, the decision counts again.
+3. A load may take a decision id only from a file it owns. If a decision still counting has the id from a file in
+   another repository, or in a folder of this repository outside the load, the load stops before writing anything,
+   names both files and suggests `--source`.
+4. A load retires a decision it owns but didn't load only when this checkout proves the file is gone: the load read
+   that file again under another id (after `--source`, or a second decision folder), or the file is missing here and
+   the first commit it was loaded at with the file committed is in this checkout's history. Anything else keeps
+   counting. A retired decision's stances and "replaces" links get `invalid_at` (spec §4); it holds no id, and it
+   counts again if its file returns.
 5. A decision loaded before origins were kept has no origin: it becomes the next load's that names its id.
 
 ## Alternatives
-- **Make `--source` required for a second repository**: rejected. Precedent can't tell a second repository from a
-  second checkout of the first without knowing where each decision came from, which is this decision.
+- **Retire whatever the load didn't read**: rejected after review. Skipped folders, older branches, shallow clones
+  and same-path containers all lifted blocks whose files still existed.
+- **Treat a folder outside git as `local`, by its absolute path**: rejected after review. Two machines or containers
+  at one path retired each other's decisions, and the graph stored people's home paths.
+- **Let `PRECEDENT_REPO` override a remote**: rejected after review. Left exported, it made every repository act as
+  one and retire its decisions.
 - **Change the ids to include the repository**: not now. Every id already in a graph would change, and links and
   `precedent.yaml` would have to follow. The refusal covers the clash meanwhile.
-- **Retire everything under the org that a load didn't produce**: rejected. One repository's load would retire every
-  other repository's decisions.
 
 ## Consequences
-- Loading a second repository with clashing ids now stops instead of silently overwriting; `--source` keeps them
-  apart.
-- Switching branches and loading again reflects that branch: decisions whose files aren't there stop counting.
-- A load whose remote is set to another repository's name, or `PRECEDENT_REPO` set to it, acts for that repository:
-  who may load into an org is a matter of who may write to its graph.
-- Decisions loaded before this change keep no origin until a load names them again, so a file deleted before the
-  upgrade still counts. Decisions found in ordinary documents keep their own rule (ADR0014).
-- Tests: 1,152 remote URL forms and random text (no credential ever survives); every relation between an earlier
-  decision and a load; random histories; real git repositories for clashes, `--source`, deletion, deleted
-  replacements, restores, renames, separate folder loads, two clones, a folder outside any repository and
-  `PRECEDENT_REPO`. Safety eval X12.
+- Loading a second repository with clashing ids stops instead of silently overwriting; `--source` keeps them apart.
+- Deleting a decision file and loading from a checkout that contains the deletion retires it. A shallow CI clone
+  that can't see the earlier commit retires nothing; load with full history, or from a normal clone.
+- A decision whose deletion can't be proven keeps counting, as before this change: a file loaded before it was ever
+  committed, a decision loaded before this change, or one loaded outside a named repository. For a decision that
+  says avoid, that keeps the block; for one that replaced another, the old one stays replaced until a load can prove
+  the deletion. Commit the deletion and load from a full clone.
+- A load whose remote is set to another repository's name acts for that repository: who may load into an org is a
+  matter of who may write to its graph.
+- Tests: 3,024 remote URL forms plus random text (no credential, query or fragment survives), every relation between
+  an earlier decision and a load, 96 retirement cases, random histories, and real git repositories with commits,
+  branches and clones for every case above. Safety eval X12.

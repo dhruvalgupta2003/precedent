@@ -124,7 +124,7 @@ class DecisionRecord(BaseModel):
 
 ### Rules
 - Scope kind `symbol` covers code identifiers (`React.FC`, `export default`); found while writing eval cases E03, P03, P04.
-- **Never delete.** A changed fact sets `invalid_at` on the old edge and creates a new one. Implemented for `APPLIES_TO` (keyed by polarity) and `SUPERSEDES`: stances and links a re-ingested source no longer states get `invalid_at`; reads skip them.
+- **Never delete.** A changed fact sets `invalid_at` on the old edge and creates a new one. Implemented for `APPLIES_TO` (keyed by polarity) and `SUPERSEDES`: stances and links a re-ingested source no longer states get `invalid_at`; reads skip them. A decision whose file a load proves is gone (ADR0021) gets the same on all its stances and links, and is marked `gone`.
 - A decision is **current** iff `status = "accepted"` and no incoming valid `SUPERSEDES` that takes effect: the newer decision's own file says accepted, it is reviewed when the older one is, and the links form no loop (ADR0019).
 - A decision can **BLOCK** iff current **and** `confirmed` **and** `tier in {"structured","capture"}`.
 - Every `Decision` and every LLM-derived edge has ≥ 1 `CITES` with a `quote`.

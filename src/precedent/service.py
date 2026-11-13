@@ -13,6 +13,7 @@ from precedent.adapters.falkor import (
     ensure_schema,
     found_quotes,
     found_urls,
+    note_commit,
     origins,
     retire_found,
     retire_gone,
@@ -26,7 +27,7 @@ from precedent.core.doctor import StaleLine, mentions, stale_lines
 from precedent.core.errors import ExtractionError, KnowledgeError
 from precedent.core.grounding import grounded, keep_grounded
 from precedent.core.model import DecisionRecord, Origin, Scope
-from precedent.core.origin import Reach, clashes, gone, repo_name
+from precedent.core.origin import Earlier, Proof, Reach, clashes, covers, repo_name, retired
 from precedent.core.preflight import Report, check
 
 if TYPE_CHECKING:
@@ -57,6 +58,7 @@ class IngestReport(NamedTuple):
     dropped: int = 0  # AI-read scopes whose quote isn't in the source or whose value isn't code
     failed: int = 0  # sources the AI could not read; their decisions are still saved
     found: int = 0  # decisions found in ordinary documents (ADR0014): proposed, may warn, never block
+    retired: int = 0  # decisions whose file this checkout proves is gone (ADR0021)
 
 
 def ingest(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> IngestReport:  # noqa: B008 (immutable)
@@ -68,16 +70,15 @@ def ingest(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> Ingest
     counts: Counter[str] = Counter()
     org, _, source = org.partition("/")
     plan = folder.scan(Path(root))
-    reach, base = _reach(Path(root))
-    decisions = [_placed(d, reach, base) for d in _read_all(plan.adr_folders, Path(root), org, source)]
+    where = _where(Path(root))
+    decisions = [_with_origin(d, where, Path(root)) for d in _read_all(plan.adr_folders, Path(root), org, source)]
     ensure_schema(graph)
-    loaded = origins(graph, [d.id for d in decisions], reach.repo)
-    _owned(decisions, loaded, reach)
+    earlier = _claim(graph, decisions, where)
     # The AI reads before the first write too, so nothing is written until everything has been read and checked.
     decisions = [_with_scopes(d, ai.adrs, counts) if ai.adrs else d for d in decisions]
     for record in decisions:
         counts["written" if save_decision(graph, record) else "unchanged"] += 1
-    retire_gone(graph, gone(loaded, {d.id for d in decisions}, reach))
+    counts["retired"] = _retire(graph, decisions, earlier, where)
     docs = _Docs(plan.docs, Path(root), f"{org}/{source}" if source else org)
     counts["found"] = _load_docs(graph, docs, ai.docs, counts)
     return IngestReport(**counts)
@@ -92,32 +93,72 @@ def _read_all(adr_folders: list[Path], root: Path, org: str, source: str) -> lis
     return decisions
 
 
-def _reach(root: Path) -> tuple[Reach, Path]:
-    """What this load owns (ADR0021), and the folder its files' paths are taken from.
+class Where(NamedTuple):
+    """The repository a load runs in, and what of it the load owns (ADR0021)."""
 
-    The repository is PRECEDENT_REPO, else the git remote `origin` (so a laptop and CI agree), else "local" with
-    paths from the top of this machine's file system.
+    repo: folder.Repository
+    reach: Reach
+
+
+def _where(root: Path) -> Where | None:
+    """None outside a git repository with a name: then decisions keep no origin, and nothing is refused or retired.
+
+    The name is the `origin` remote (so a laptop and CI agree), else PRECEDENT_REPO for a repository without one.
     """
-    found = folder.repository(root)
-    name = os.environ.get("PRECEDENT_REPO") or (repo_name(found[1]) if found else None)
-    base = (found[0] if found else root.resolve()) if name else Path("/")
-    under = Path(os.path.relpath(root.resolve(), base.resolve())).as_posix()
-    return Reach(name or "local", "" if under == "." else f"{under}/"), base
+    repo = folder.repository(root)
+    if repo is None:
+        return None
+    name = repo_name(repo.remote) or _named(os.environ.get("PRECEDENT_REPO"))
+    return Where(repo, Reach(name, repo.prefix)) if name else None
 
 
-def _placed(record: DecisionRecord, reach: Reach, base: Path) -> DecisionRecord:
-    path = Path(os.path.relpath(Path(record.sources[0].url).resolve(), base.resolve())).as_posix()
-    return record.model_copy(update={"origin": Origin(repo=reach.repo, path=path)})
+def _named(value: str | None) -> str | None:
+    """PRECEDENT_REPO as a repository name, normalised like a remote so a token in it is never kept."""
+    if not value:
+        return None
+    if name := repo_name(value):
+        return name
+    raise KnowledgeError("PRECEDENT_REPO doesn't name a repository: use host/owner/name, like github.com/acme/web")
 
 
-def _owned(decisions: list[DecisionRecord], loaded: list[tuple[str, Origin | None]], reach: Reach) -> None:
-    """Refuse to take a decision id from a file this load doesn't own: another repository, or another folder."""
-    found = clashes([(d.id, d.origin) for d in decisions if d.origin], loaded, reach)
-    if found:
+def _with_origin(record: DecisionRecord, where: Where | None, root: Path) -> DecisionRecord:
+    """The file's path inside the repository: git's path to the loaded folder plus the file's path inside it, never
+    a resolved path, so a symlinked file is known by the link's own place."""
+    if where is None:
+        return record
+    path = where.reach.under + Path(os.path.relpath(record.sources[0].url, root)).as_posix()
+    return record.model_copy(update={"origin": Origin(repo=where.reach.repo, path=path)})
+
+
+def _claim(graph: Graph, decisions: list[DecisionRecord], where: Where | None) -> list[Earlier]:
+    """The decisions this load may touch, after refusing to take an id from a file it doesn't own."""
+    if where is None:
+        return []
+    earlier = origins(graph, [d.id for d in decisions], where.reach.repo)
+    mine = [(d.id, d.origin) for d in decisions if d.origin]
+    if found := clashes(mine, [(e.decision, e.origin) for e in earlier], where.reach):
         raise KnowledgeError(
-            "; ".join(found) + ". Load one of them with --source NAME (for example its repository's name), so each"
-            " keeps its own ids"
+            "; ".join(found) + ". To keep both, load this folder with --source NAME (for example its repository's"
+            " name), or load the folder that holds both if they are in one repository"
         )
+    return earlier
+
+
+def _retire(graph: Graph, decisions: list[DecisionRecord], earlier: list[Earlier], where: Where | None) -> int:
+    """Note the commit each committed decision file is in, then retire what this checkout proves is gone."""
+    if where is None:
+        return 0
+    read = frozenset(d.origin.path for d in decisions if d.origin)
+    committed = folder.committed(where.repo)
+    if where.repo.head:
+        note_commit(graph, [d.id for d in decisions if d.origin and d.origin.path in committed], where.repo.head)
+    owned = [e for e in earlier if e.origin and covers(where.reach, e.origin)]
+    missing = frozenset(e.origin.path for e in owned if e.origin and not (where.repo.top / e.origin.path).is_file())
+    seen = {e.commit for e in owned if e.commit}
+    history = frozenset(c for c in seen if folder.in_history(where.repo, c))
+    gone = retired(earlier, {d.id for d in decisions}, where.reach, Proof(read, missing, history))
+    retire_gone(graph, gone)
+    return len(gone)
 
 
 def _source(source: str, adr_folder: Path, root: Path) -> str:

@@ -6,6 +6,7 @@ model key to record answers for a new prompt or model.
 """
 
 import os
+import subprocess
 import tempfile
 from collections.abc import Set as AbstractSet
 from functools import cache
@@ -64,15 +65,21 @@ def backstage() -> Graph:
 
 def folder_verdict(loads: list[dict[str, str]], diff: str) -> str:
     """Load a small folder of decisions into its own graph, once per file set (the folder holds exactly that set
-    each time), check a diff against it, then delete the graph."""
+    each time, committed in a git repository so a deleted file can be proven deleted), check a diff against it,
+    then delete the graph."""
     graph = fresh(FOLDER_GRAPH)
     try:
         with tempfile.TemporaryDirectory() as root:
+            git(root, "init", "-q")
+            git(root, "remote", "add", "origin", "https://github.com/precedent-evals/fixture")
             for files in loads:
                 for old in Path(root).iterdir():
-                    old.unlink()
+                    if old.name != ".git":
+                        old.unlink()
                 for name, text in files.items():
                     (Path(root) / name).write_text(text)
+                git(root, "add", "-A")
+                git(root, "commit", "-q", "--allow-empty", "-m", "decisions")
                 service.ingest(graph, root, "team")
         return service.preflight(graph, changes(diff)).verdict
     except KnowledgeError as error:
@@ -80,6 +87,12 @@ def folder_verdict(loads: list[dict[str, str]], diff: str) -> str:
     finally:
         if FOLDER_GRAPH in database().list_graphs():
             graph.delete()
+
+
+def git(root: str, *args: str) -> None:
+    """Run git in an eval's own throwaway repository (fixed arguments, no shell)."""
+    who = ["-c", "user.name=eval", "-c", "user.email=eval@example.com", "-c", "commit.gpgsign=false"]
+    subprocess.run(["git", "-C", root, *who, *args], check=True, capture_output=True)  # noqa: S603, S607
 
 
 def score_preflight(case: Case) -> tuple[bool, Any]:

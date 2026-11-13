@@ -63,6 +63,30 @@ def test_loading_two_files_with_one_number_exits_1_names_them_and_touches_no_dat
     assert "more than one file is team/ADR0007 (0007-avoid-axios.md, 0007-zz-note.md)" in capsys.readouterr().err
 
 
+RETIRED = [
+    (1, "1 decision stopped counting: its file is gone."),
+    (2, "2 decisions stopped counting: their files are gone."),
+]
+
+
+@pytest.mark.parametrize("retired", RETIRED, ids=["one", "two"])
+def test_a_load_says_how_many_decisions_stopped_counting(monkeypatch, capsys, retired):
+    count, line = retired
+    monkeypatch.setattr("precedent.surfaces.cli._graph", lambda org: None)
+    monkeypatch.setattr("precedent.service.ingest", lambda *_: IngestReport(written=1, retired=count))
+
+    assert main(["load", ".", "--no-ai"]) == 0
+    assert line in capsys.readouterr().out
+
+
+def test_a_load_that_retires_nothing_says_nothing_about_it(monkeypatch, capsys):
+    monkeypatch.setattr("precedent.surfaces.cli._graph", lambda org: None)
+    monkeypatch.setattr("precedent.service.ingest", lambda *_: IngestReport(written=1))
+
+    assert main(["load", ".", "--no-ai"]) == 0
+    assert "stopped counting" not in capsys.readouterr().out
+
+
 def report(verdict: str) -> Report:
     scope = Scope(kind="package", value="moment", polarity="avoid")
     finding = Finding(

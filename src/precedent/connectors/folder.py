@@ -71,12 +71,36 @@ def _readable(rel: Path) -> bool:
     return rel.suffix.lower() == ".md" and not skipped and not NOT_DECISIONS.fullmatch(rel.name)
 
 
-def repository(root: Path) -> tuple[Path, str] | None:
-    """The git repository a folder is in: its top folder and its `origin` remote ("" without one), else None."""
+class Repository(NamedTuple):
+    """The git repository a folder is in, as git sees it (so a mistyped letter case or a symlinked path agree)."""
+
+    top: Path
+    remote: str  # the `origin` remote as written, "" without one
+    prefix: str  # the folder inside the repository: "" or "docs/adr/"
+    head: str | None  # the commit checked out; None before the first commit
+
+
+def repository(root: Path) -> Repository | None:
+    """The git repository a folder is in, or None outside one (or when git refuses to run there)."""
     top = _git(root, "rev-parse", "--show-toplevel")
     if top is None:
         return None
-    return Path(top), _git(root, "remote", "get-url", "origin") or ""
+    prefix = _git(root, "rev-parse", "--show-prefix") or ""
+    head = _git(root, "rev-parse", "--verify", "-q", "HEAD")
+    return Repository(Path(top), _git(root, "remote", "get-url", "origin") or "", prefix, head)
+
+
+def committed(repo: Repository) -> set[str]:
+    """Paths under the folder that are in the checked-out commit (a file only on disk isn't committed yet)."""
+    if repo.head is None:
+        return set()
+    listed = _git(repo.top, "ls-tree", "-r", "-z", "--name-only", repo.head, "--", repo.prefix or ".")
+    return set((listed or "").split("\0")) - {""}
+
+
+def in_history(repo: Repository, commit: str) -> bool:
+    """The commit is the checked-out one or one of its ancestors. False when git can't tell (a shallow clone)."""
+    return repo.head is not None and _git(repo.top, "merge-base", "--is-ancestor", commit, repo.head) is not None
 
 
 def _git(root: Path, *args: str) -> str | None:
