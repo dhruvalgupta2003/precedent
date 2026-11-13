@@ -16,7 +16,7 @@ tools from [See it in 2 minutes](try.md#before-you-start).
 ## 1. Install
 
 ```sh
-uv tool install "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent"
+uv tool install "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent@v0.3.0"
 ```
 
 This installs the `precedent` command with its own small database. There's nothing else to install or start.
@@ -26,7 +26,7 @@ This installs the `precedent` command with its own small database. There's nothi
     Run a FalkorDB server and tell Precedent where it is. With `FALKORDB_URL` set, Precedent always uses that server:
 
     ```sh
-    uv tool install git+https://github.com/dhruvalgupta2003/precedent
+    uv tool install git+https://github.com/dhruvalgupta2003/precedent@v0.3.0
     docker run -d --name precedent-db -p 6380:6379 falkordb/falkordb:6.0.4
     export FALKORDB_URL=redis://localhost:6380
     ```
