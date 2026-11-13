@@ -30,6 +30,7 @@ All of them:
 | [0017](0017-your-own-claude-code-as-the-ai.md) | Your own Claude Code as the AI, with nothing of yours loaded |
 | [0018](0018-which-rule-wins.md) | Which rule wins: a fixed order, and an honest disagreement |
 | [0019](0019-a-replacement-needs-authority.md) | A replacement needs authority |
+| [0020](0020-one-number-one-decision.md) | One number, one decision, and a load is all or nothing |
 
 The full technical design is in [`docs/spec.md`](https://github.com/dhruvalgupta2003/precedent/blob/main/docs/spec.md)
 on GitHub.

@@ -47,6 +47,22 @@ def test_a_bad_knowledge_file_prints_where_and_exits_1(tmp_path, monkeypatch, ca
     assert "precedent.yaml: no ADR 'ADR41'" in capsys.readouterr().err
 
 
+class Untouchable:
+    """A graph that fails the test if anything reads or writes it."""
+
+    def query(self, *_: object) -> None:
+        raise AssertionError("the load touched the database")
+
+
+def test_loading_two_files_with_one_number_exits_1_names_them_and_touches_no_database(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("precedent.surfaces.cli._graph", lambda org: Untouchable())
+    for name in ("0007-avoid-axios.md", "0007-zz-note.md"):
+        (tmp_path / name).write_text("# 7. X\n\n## Status\n\nAccepted\n\n## Decision\n\nUse X.\n")
+
+    assert main(["load", str(tmp_path), "--no-ai"]) == 1
+    assert "more than one file is ADR0007 (0007-avoid-axios.md, 0007-zz-note.md)" in capsys.readouterr().err
+
+
 def report(verdict: str) -> Report:
     scope = Scope(kind="package", value="moment", polarity="avoid")
     finding = Finding(

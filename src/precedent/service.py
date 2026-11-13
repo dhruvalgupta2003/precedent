@@ -62,15 +62,22 @@ def ingest(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> Ingest
     `org` may be "org/source" to keep this folder's decision ids apart from another's (ADR0012). With ADRs in more
     than one folder, each folder's ids are qualified by its path, so two ADR0001s don't collide.
     """
-    ensure_schema(graph)
     counts: Counter[str] = Counter()
     org, _, source = org.partition("/")
     plan = folder.scan(Path(root))
-    for adr_folder in plan.adr_folders:
-        name = _source(source, adr_folder, Path(root)) if len(plan.adr_folders) > 1 else source or None
-        for parsed in adr.records(str(adr_folder), org, name):
-            record = _with_scopes(parsed, ai.adrs, counts) if ai.adrs else parsed
-            counts["written" if save_decision(graph, record) else "unchanged"] += 1
+    named = len(plan.adr_folders) > 1
+    # Read and check every folder before writing anything: a team's decisions load all at once or not at all.
+    found = [
+        parsed
+        for adr_folder in plan.adr_folders
+        for parsed in adr.records(
+            str(adr_folder), org, _source(source, adr_folder, Path(root)) if named else source or None
+        )
+    ]
+    ensure_schema(graph)
+    for parsed in found:
+        record = _with_scopes(parsed, ai.adrs, counts) if ai.adrs else parsed
+        counts["written" if save_decision(graph, record) else "unchanged"] += 1
     docs = _Docs(plan.docs, Path(root), f"{org}/{source}" if source else org)
     counts["found"] = _load_docs(graph, docs, ai.docs, counts)
     return IngestReport(**counts)

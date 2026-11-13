@@ -19,7 +19,7 @@ from precedent.adapters.falkor import connect
 from precedent.adapters.llm import Kind, scope_reader
 from precedent.connectors import adr
 from precedent.core.diff import changes
-from precedent.core.errors import ExtractionError
+from precedent.core.errors import ExtractionError, KnowledgeError
 from precedent.core.grounding import grounded, keep_grounded
 from precedent.service import ScopeReader
 
@@ -28,6 +28,7 @@ ADRS = HERE.parent / "examples" / "backstage"  # the same decisions the docs dem
 RECORDED = HERE / "fixtures" / "extract-cache"
 MODEL = os.environ.get("PRECEDENT_MODEL_EXTRACT", "openrouter:anthropic/claude-haiku-5.5")
 GRAPH = "test_eval_backstage"  # test_ prefix: the eval graph is disposable
+GRAPH_NAME_FOLDER = "test_eval_folder"
 
 Case = dict[str, Any]
 
@@ -63,15 +64,18 @@ def backstage() -> Graph:
 
 def folder_verdict(files: dict[str, str], diff: str) -> str:
     """Load a small folder of decisions into its own graph, check a diff against it, then delete the graph."""
-    graph = fresh("test_eval_folder")
+    graph = fresh(GRAPH_NAME_FOLDER)
     try:
         with tempfile.TemporaryDirectory() as root:
             for name, text in files.items():
                 (Path(root) / name).write_text(text)
             service.ingest(graph, root, "team")
         return service.preflight(graph, changes(diff)).verdict
+    except KnowledgeError:
+        return "REFUSED"  # the load stopped: the decisions as written can't be trusted
     finally:
-        graph.delete()
+        if GRAPH_NAME_FOLDER in database().list_graphs():
+            graph.delete()
 
 
 def score_preflight(case: Case) -> tuple[bool, Any]:
