@@ -7,6 +7,7 @@ from falkordb import FalkorDB, Graph
 from redis.backoff import NoBackoff
 from redis.retry import Retry
 
+from precedent.core.authority import Link, Party, with_replacements
 from precedent.core.model import DecisionRecord, content_hash
 from precedent.core.preflight import Rule
 
@@ -61,7 +62,8 @@ FOREACH (s IN $scopes |
   SET a.quote = s.quote, a.extracted = s.extracted, a.unless = s.unless, a.invalid_at = null)
 FOREACH (old IN $supersedes |
   MERGE (o:Decision {id: old})
-  MERGE (d)-[:SUPERSEDES]->(o))
+  MERGE (d)-[r:SUPERSEDES]->(o)
+  SET r.invalid_at = null)
 FOREACH (src IN $sources |
   MERGE (doc:Source {url: src.url}) SET doc.kind = src.kind
   MERGE (d)-[:CITES {section: src.section, quote: src.quote}]->(doc))
@@ -74,6 +76,13 @@ RETIRE_STALE_STANCES = """
 MATCH (d:Decision {id: $id})-[a:APPLIES_TO]->(w:Scope)
 WHERE a.invalid_at IS NULL AND NOT ((w.kind + ':' + w.value + ':' + a.polarity) IN $stances)
 SET a.invalid_at = $now
+"""
+# The same for "replaces" links (ADR0019): a link the newer decision's file no longer states stops counting, so a
+# claim withdrawn in review can't take effect later, when the decision is accepted.
+RETIRE_STALE_LINKS = """
+MATCH (d:Decision {id: $id})-[r:SUPERSEDES]->(o:Decision)
+WHERE r.invalid_at IS NULL AND NOT o.id IN $supersedes
+SET r.invalid_at = $now
 """
 # A decision found in an ordinary document (ADR0014) that its document no longer states is retired, not deleted.
 # Clearing the hash lets it come back as it was if the document states it again.
@@ -124,27 +133,45 @@ def save_decision(graph: Graph, record: DecisionRecord) -> bool:
     # MERGE keys can't be null, so a missing section or quote is stored as "".
     sources = [s.model_dump() | {"section": s.section or "", "quote": s.quote or ""} for s in record.sources]
     stances = [f"{s.kind}:{s.value}:{s.polarity}" for s in record.scopes]
-    graph.query(RETIRE_STALE_STANCES, {"id": record.id, "stances": stances, "now": datetime.now(UTC).isoformat()})
+    now = datetime.now(UTC).isoformat()
+    graph.query(RETIRE_STALE_STANCES, {"id": record.id, "stances": stances, "now": now})
+    graph.query(RETIRE_STALE_LINKS, {"id": record.id, "supersedes": list(record.supersedes), "now": now})
     params = {"id": record.id, "hash": content_hash(record), "props": props, "scopes": scopes}
     result = graph.query(SAVE_DECISION, params | {"supersedes": list(record.supersedes), "sources": sources})
     return result.properties_set > 0
 
 
-# Every decision's stance on every scope, with what replaced it and where it's written.
+# Every decision's stance on every scope, and where it's written.
 # One small graph per org, so pre-flight loads them all and matches in pure code (core/preflight.py).
 RULES = """
 MATCH (d:Decision)-[a:APPLIES_TO]->(s:Scope)
 WHERE a.invalid_at IS NULL
-OPTIONAL MATCH (newer:Decision)-[:SUPERSEDES]->(d)
 OPTIONAL MATCH (d)-[:CITES]->(doc:Source)
 RETURN d.id, d.title, d.status, d.tier, d.confirmed, d.needs_review, s.kind, s.value, a.polarity, a.quote,
-       a.extracted, a.unless, collect(DISTINCT newer.id), collect(DISTINCT doc.url), d.decided_at
+       a.extracted, a.unless, collect(DISTINCT doc.url), d.decided_at
+"""
+# Every "replaces" link a file still states, with what decides each side's authority. Which ones take effect is
+# decided in pure code (core/authority.py, ADR0019), never here.
+LINKS = """
+MATCH (n:Decision)-[r:SUPERSEDES]->(o:Decision)
+WHERE r.invalid_at IS NULL
+RETURN n.id, n.status, n.tier, n.confirmed, o.id, o.status, o.tier, o.confirmed
 """
 
 
 def rules(graph: Graph) -> list[Rule]:
-    rows = graph.query(RULES).result_set
-    return [_rule(row) for row in rows]
+    """Every live stance, each told what replaces its decision; only replacements with authority count."""
+    stances = [_rule(row) for row in graph.query(RULES).result_set]
+    links = [_link(row) for row in graph.query(LINKS).result_set]
+    return with_replacements(stances, links)
+
+
+def _link(row: list) -> Link:
+    newer_id, newer_status, newer_tier, newer_confirmed, older_id, older_status, older_tier, older_confirmed = row
+    return Link(
+        Party(newer_id, newer_status, newer_tier, bool(newer_confirmed)),
+        Party(older_id, older_status, older_tier, bool(older_confirmed)),
+    )
 
 
 def _rule(row: list) -> Rule:
@@ -161,7 +188,6 @@ def _rule(row: list) -> Rule:
         quote,
         extracted,
         unless,
-        newer,
         urls,
         decided_at,
     ) = row
@@ -182,7 +208,6 @@ def _rule(row: list) -> Rule:
             "confirmed": confirmed,
             "needs_review": bool(needs_review),
             "scope": scope,
-            "superseded_by": sorted(newer),
             "source": min(urls, default=None),
             "decided_at": decided_at or None,
         }

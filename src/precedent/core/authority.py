@@ -4,7 +4,8 @@ Decisions often speak about the same thing. A fixed order settles it, the same w
 involved. The first rule that tells two decisions apart decides:
 
 1. Only decisions in force count: one that was replaced, rejected or retired never wins.
-2. An explicit link wins: a decision beats the one it says it replaces.
+2. An explicit link wins: a decision beats the one it says it replaces, if it has the authority to (ADR0019): it
+   was accepted, it is reviewed when the one it replaces is, and the links don't form a loop.
 3. Reviewed beats unreviewed: a stance a person checked (an accepted decision record, precedent.yaml) beats a
    proposed decision or anything an AI read.
 4. Otherwise, decisions that disagree are a disagreement. Never settled by date or by which file is closer: a person
@@ -29,7 +30,8 @@ class Rule(Frozen):
     tier: Tier
     confirmed: bool
     scope: Scope
-    superseded_by: tuple[str, ...] = ()
+    superseded_by: tuple[str, ...] = ()  # only the replacements that take effect (ADR0019)
+    held_back: tuple[str, ...] = ()  # claims to replace it that have no effect, each with the reason
     needs_review: bool = False
     source: str | None = None
     decided_at: date | None = None
@@ -47,6 +49,104 @@ class Rule(Frozen):
         """
         structured = self.tier in ("structured", "capture") and not self.scope.extracted
         return self.live and self.status == "accepted" and self.confirmed and structured
+
+
+ACCEPTED_ONCE = ("accepted", "superseded", "deprecated")  # a person accepted it, whatever happened to it since
+NEVER_ACCEPTED = {"proposed": "is only proposed", "rejected": "was rejected"}
+
+
+class Party(NamedTuple):
+    """A decision at one end of a "replaces" link, with what decides whether its word counts."""
+
+    id: str
+    status: Status | None
+    tier: Tier | None  # None for a decision the graph knows only because something links to it
+    confirmed: bool
+
+    @property
+    def level(self) -> int:
+        """0: never accepted. 1: accepted, but nobody reviewed it. 2: reviewed (ADR0004's test, for a decision)."""
+        if self.status not in ACCEPTED_ONCE:
+            return 0
+        return 2 if self.confirmed and self.tier in ("structured", "capture") else 1
+
+
+class Link(NamedTuple):
+    """`newer` says it replaces `older`."""
+
+    newer: Party
+    older: Party
+
+
+class Replacement(NamedTuple):
+    """What replaces one decision, and the claims to replace it that have no effect, each with the reason."""
+
+    by: tuple[str, ...] = ()
+    held_back: tuple[str, ...] = ()
+
+
+def replacements(links: Iterable[Link]) -> dict[str, Replacement]:
+    """Which "replaces" links take effect (ADR0019): changing which decision is in force needs authority.
+
+    A link counts only when the newer decision was accepted at some point, has at least the review level of the
+    one it replaces, and is not part of a loop. Every other claim stays in the graph, has no effect, and says why.
+    A replacement made by a decision that was itself replaced later still stands: nothing comes back to life.
+    """
+    held: dict[str, list[str]] = {}
+    counted: list[Link] = []
+    for link in sorted(set(links), key=lambda lk: (lk.older.id, lk.newer.id)):
+        why = _no_effect(link)
+        if why:
+            held.setdefault(link.older.id, []).append(why)
+        else:
+            counted.append(link)
+    replaces: dict[str, set[str]] = {}
+    for link in counted:
+        replaces.setdefault(link.newer.id, set()).add(link.older.id)
+    by: dict[str, list[str]] = {}
+    for link in counted:
+        if _reaches(replaces, link.older.id, link.newer.id):  # the older one replaces the newer, through any chain
+            held.setdefault(link.older.id, []).append(
+                f"{link.newer.id} says it replaces this, but their replacement links form a loop"
+            )
+        else:
+            by.setdefault(link.older.id, []).append(link.newer.id)
+    return {d: Replacement(tuple(by.get(d, ())), tuple(held.get(d, ()))) for d in sorted(by.keys() | held.keys())}
+
+
+def _no_effect(link: Link) -> str | None:
+    newer, older = link
+    if newer.id == older.id:
+        return f"{newer.id} says it replaces itself"
+    if newer.level == 0:
+        why = NEVER_ACCEPTED.get(str(newer.status), "its status is unreadable")
+        return f"{newer.id} says it replaces this, but {why}"
+    if newer.level < older.level:
+        return f"{newer.id} says it replaces this, but is not reviewed"
+    return None
+
+
+def _reaches(replaces: dict[str, set[str]], start: str, goal: str) -> bool:
+    seen, todo = {start}, [start]
+    while todo:
+        node = todo.pop()
+        if node == goal:
+            return True
+        for nxt in replaces.get(node, set()) - seen:
+            seen.add(nxt)
+            todo.append(nxt)
+    return False
+
+
+def with_replacements(rules: Iterable[Rule], links: Iterable[Link]) -> list[Rule]:
+    """Each stance, told what replaces its decision and which claims to replace it have no effect."""
+    found = replacements(links)
+    return [
+        r.model_copy(update={"superseded_by": found[r.decision].by, "held_back": found[r.decision].held_back})
+        if r.decision in found
+        else r
+        for r in rules
+    ]
 
 
 class Standing(NamedTuple):

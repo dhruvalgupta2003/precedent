@@ -33,6 +33,7 @@ def _thing(kind: str, value: str, standings: list[Standing]) -> str:
         where = f"({s.rule.source})" if s.rule.source else ""
         if quote or where:
             lines.append(f"    {' '.join(p for p in (quote, where) if p)}")
+        lines += [f"    not in effect: {_plain(note)}" for note in s.rule.held_back]
     return "\n".join(lines)
 
 
@@ -64,4 +65,5 @@ def _fields(s: Standing) -> dict:
         "decided_at": s.rule.decided_at.isoformat() if s.rule.decided_at else None,
         "quote": s.rule.scope.quote,
         "source": s.rule.source,
+        "held_back": list(s.rule.held_back),
     }

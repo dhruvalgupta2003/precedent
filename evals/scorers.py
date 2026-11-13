@@ -38,17 +38,38 @@ def reader(kind: Kind = "adr") -> ScopeReader:
 
 
 @cache
+def database() -> FalkorDB:
+    if os.environ.get("PRECEDENT_TEST_DB") == "embedded":  # the built-in database (ADR0015)
+        return connect(None, Path(tempfile.mkdtemp()) / "eval.db")
+    return FalkorDB.from_url(os.environ.get("FALKORDB_URL", "redis://localhost:6380"))
+
+
+def fresh(name: str) -> Graph:
+    """An empty graph; the test_ prefix marks it disposable."""
+    if name in database().list_graphs():
+        database().select_graph(name).delete()
+    return database().select_graph(name)
+
+
+@cache
 def backstage() -> Graph:
     """A fresh graph of Backstage's decisions, built through the real ingest path."""
-    if os.environ.get("PRECEDENT_TEST_DB") == "embedded":  # the built-in database (ADR0015)
-        db = connect(None, Path(tempfile.mkdtemp()) / "eval.db")
-    else:
-        db = FalkorDB.from_url(os.environ.get("FALKORDB_URL", "redis://localhost:6380"))
-    if GRAPH in db.list_graphs():
-        db.select_graph(GRAPH).delete()
-    graph = db.select_graph(GRAPH)
+    graph = fresh(GRAPH)
     service.ingest(graph, str(ADRS), "backstage", service.Readers(adrs=reader()))
     return graph
+
+
+def folder_verdict(files: dict[str, str], diff: str) -> str:
+    """Load a small folder of decisions into its own graph, check a diff against it, then delete the graph."""
+    graph = fresh("test_eval_folder")
+    try:
+        with tempfile.TemporaryDirectory() as root:
+            for name, text in files.items():
+                (Path(root) / name).write_text(text)
+            service.ingest(graph, root, "team")
+        return service.preflight(graph, changes(diff)).verdict
+    finally:
+        graph.delete()
 
 
 def score_preflight(case: Case) -> tuple[bool, Any]:
@@ -99,6 +120,9 @@ def score_found(case: Case) -> tuple[bool, Any]:
 
 def score_safety(case: Case) -> tuple[bool, Any]:
     given, expected = case["input"], case["expected"]
+    if "files" in given:  # a folder of decisions, then a change checked against it
+        got = folder_verdict(given["files"], given["diff"])
+        return got == expected["verdict"], got
     if "diff" in given:
         report = service.preflight(backstage(), changes(given["diff"]))
         return report.verdict == expected["verdict"], report.verdict

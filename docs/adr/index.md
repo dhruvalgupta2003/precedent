@@ -29,6 +29,7 @@ All of them:
 | [0016](0016-new-uses-in-files-that-already-import.md) | New uses in files that already import a library only warn |
 | [0017](0017-your-own-claude-code-as-the-ai.md) | Your own Claude Code as the AI, with nothing of yours loaded |
 | [0018](0018-which-rule-wins.md) | Which rule wins: a fixed order, and an honest disagreement |
+| [0019](0019-a-replacement-needs-authority.md) | A replacement needs authority |
 
 The full technical design is in [`docs/spec.md`](https://github.com/dhruvalgupta2003/precedent/blob/main/docs/spec.md)
 on GitHub.

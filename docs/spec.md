@@ -124,8 +124,8 @@ class DecisionRecord(BaseModel):
 
 ### Rules
 - Scope kind `symbol` covers code identifiers (`React.FC`, `export default`); found while writing eval cases E03, P03, P04.
-- **Never delete.** A changed fact sets `invalid_at` on the old edge and creates a new one. Implemented for `APPLIES_TO` (keyed by polarity): stances a re-ingested source no longer states get `invalid_at`; reads skip them.
-- A decision is **current** iff `status = "accepted"` and no incoming valid `SUPERSEDES`.
+- **Never delete.** A changed fact sets `invalid_at` on the old edge and creates a new one. Implemented for `APPLIES_TO` (keyed by polarity) and `SUPERSEDES`: stances and links a re-ingested source no longer states get `invalid_at`; reads skip them.
+- A decision is **current** iff `status = "accepted"` and no incoming valid `SUPERSEDES` that takes effect: the newer decision was accepted at some point, is reviewed when the older one is, and the links form no loop (ADR0019).
 - A decision can **BLOCK** iff current **and** `confirmed` **and** `tier in {"structured","capture"}`.
 - Every `Decision` and every LLM-derived edge has ≥ 1 `CITES` with a `quote`.
 - A citation's `section` and `quote` live on the `CITES` edge, not the `Source` node: decisions share one document but quote different sentences, and a node property holds one value (decided 2026-11-12). MERGE keys can't be null, so a missing section or quote is stored as `""`.

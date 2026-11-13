@@ -61,6 +61,7 @@ def test_json_carries_each_standing_for_other_tools():
                         "decided_at": None,
                         "quote": None,
                         "source": None,
+                        "held_back": [],
                     }
                 ],
             }
@@ -79,3 +80,23 @@ def test_quotes_lose_control_characters_so_a_document_cant_drive_the_terminal():
 
     assert "\x1b" not in text
     assert '"use fetch [2J now"' in text
+
+
+def test_a_claimed_replacement_with_no_effect_is_shown_under_the_decision_it_names():
+    """ADR0019: someone reading `why` sees that a proposal wants to replace this decision, and why it hasn't."""
+    note = "t/B says it replaces this, but is only proposed"
+    rule = standing("t/A", "avoid", "wins", "reviewed and in force").rule.model_copy(update={"held_back": (note,)})
+
+    text = explain("axios", {("package", "axios"): [Standing(rule, "wins", "reviewed and in force")]})
+    found = as_json("axios", {("package", "axios"): [Standing(rule, "wins", "reviewed and in force")]})
+
+    assert f"    not in effect: {note}" in text.splitlines()
+    assert found["things"][0]["standings"][0]["held_back"] == [note]
+
+
+def test_a_note_about_a_replacement_loses_control_characters_too():
+    rule = standing("t/A", "avoid", "wins").rule.model_copy(update={"held_back": ("t/B\x1b[2J says it replaces this",)})
+
+    text = explain("axios", {("package", "axios"): [Standing(rule, "wins", "because")]})
+
+    assert "\x1b" not in text
