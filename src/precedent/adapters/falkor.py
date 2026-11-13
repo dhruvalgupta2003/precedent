@@ -8,7 +8,8 @@ from redis.backoff import NoBackoff
 from redis.retry import Retry
 
 from precedent.core.authority import Link, Party, with_replacements
-from precedent.core.model import DecisionRecord, content_hash
+from precedent.core.model import DecisionRecord, Origin, content_hash
+from precedent.core.origin import Earlier
 from precedent.core.preflight import Rule
 
 DEFAULT_URL = "redis://localhost:6380"  # a FalkorDB server run with Docker (6379 is often a local Redis)
@@ -55,7 +56,7 @@ def ensure_schema(graph: Graph) -> None:
 SAVE_DECISION = """
 MERGE (d:Decision {id: $id})
 WITH d WHERE d.hash IS NULL OR d.hash <> $hash
-SET d += $props, d.hash = $hash
+SET d += $props, d.hash = $hash, d.gone = null
 FOREACH (s IN $scopes |
   MERGE (sc:Scope {kind: s.kind, value: s.value})
   MERGE (d)-[a:APPLIES_TO {polarity: s.polarity}]->(sc)
@@ -99,6 +100,29 @@ MATCH (d:Decision)-[c:CITES]->(s:Source {kind: 'doc'})
 WHERE d.id STARTS WITH $prefix AND s.url IN $urls AND d.status <> 'deprecated'
 RETURN d.id, s.url, c.quote
 """
+# Where each decision still counting was loaded from (ADR0021): the ones these ids name, and every one from this
+# repository. A retired decision (gone) holds no id, so another file may take it.
+ORIGINS = """
+MATCH (d:Decision) WHERE (d.id IN $ids OR d.repo = $repo) AND d.gone IS NULL
+RETURN d.id, d.repo, d.path, d.commit, d.last
+"""
+# A decision whose file is proven gone states nothing any more: its stances and "replaces" links stop counting, kept
+# as history (spec §4). Clearing the hash lets it come back as it was if its file returns.
+# In this order, so a crash anywhere heals on the next load: the hash goes first (a later load re-saves the decision
+# if its file is back), and `gone` goes last (until then, a later load still sees it and retires it again).
+RETIRE_GONE = (
+    "MATCH (d:Decision) WHERE d.id IN $ids SET d.hash = null",
+    "MATCH (d:Decision)-[a:APPLIES_TO]->() WHERE d.id IN $ids AND a.invalid_at IS NULL SET a.invalid_at = $now",
+    "MATCH (d:Decision)-[r:SUPERSEDES]->() WHERE d.id IN $ids AND r.invalid_at IS NULL SET r.invalid_at = $now",
+    "MATCH (d:Decision) WHERE d.id IN $ids SET d.gone = true",
+)
+# The commit a decision was loaded at belongs to its file: a decision that moves to another file starts again.
+FORGET_COMMIT = (
+    "MATCH (d:Decision {id: $id}) WHERE d.repo <> $repo OR d.path <> $path SET d.commit = null, d.last = null"
+)
+# The first and the latest commits a decision's file was committed in: proof, later, that a checkout without the
+# file deleted it. The latest one survives a squash merge or a rebase that drops the first.
+NOTE_COMMIT = "UNWIND $ids AS i MATCH (d:Decision {id: i}) SET d.commit = coalesce(d.commit, $commit), d.last = $commit"
 DECISION_PROPS = {
     "title",
     "statement",
@@ -126,9 +150,30 @@ def retire_found(graph: Graph, prefix: str, urls: list[str], kept: list[str]) ->
     graph.query(RETIRE_FOUND, {"prefix": prefix, "urls": urls, "kept": kept})
 
 
+def origins(graph: Graph, ids: list[str], repo: str) -> list[Earlier]:
+    """Where the decisions with these ids, and every decision from this repository, were loaded from."""
+    rows = graph.query(ORIGINS, {"ids": ids, "repo": repo}).result_set
+    return [Earlier(i, Origin(repo=r, path=p) if r and p else None, c or None, la or None) for i, r, p, c, la in rows]
+
+
+def note_commit(graph: Graph, ids: list[str], commit: str) -> None:
+    if ids:
+        graph.query(NOTE_COMMIT, {"ids": ids, "commit": commit})
+
+
+def retire_gone(graph: Graph, ids: list[str]) -> None:
+    if ids:
+        now = datetime.now(UTC).isoformat()
+        for query in RETIRE_GONE:
+            graph.query(query, {"ids": ids, "now": now})
+
+
 def save_decision(graph: Graph, record: DecisionRecord) -> bool:
     """Write a decision with its scopes, the decisions it replaces and its sources. False if nothing changed."""
     props = record.model_dump(mode="json", include=DECISION_PROPS)
+    if record.origin:
+        props |= {"repo": record.origin.repo, "path": record.origin.path}
+        graph.query(FORGET_COMMIT, {"id": record.id, "repo": record.origin.repo, "path": record.origin.path})
     scopes = [s.model_dump() for s in record.scopes]
     # MERGE keys can't be null, so a missing section or quote is stored as "".
     sources = [s.model_dump() | {"section": s.section or "", "quote": s.quote or ""} for s in record.sources]

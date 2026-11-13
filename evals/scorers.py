@@ -6,6 +6,7 @@ model key to record answers for a new prompt or model.
 """
 
 import os
+import subprocess
 import tempfile
 from collections.abc import Set as AbstractSet
 from functools import cache
@@ -62,20 +63,36 @@ def backstage() -> Graph:
     return graph
 
 
-def folder_verdict(files: dict[str, str], diff: str) -> str:
-    """Load a small folder of decisions into its own graph, check a diff against it, then delete the graph."""
+def folder_verdict(loads: list[dict[str, str]], diff: str) -> str:
+    """Load a small folder of decisions into its own graph, once per file set (the folder holds exactly that set
+    each time, committed in a git repository so a deleted file can be proven deleted), check a diff against it,
+    then delete the graph."""
     graph = fresh(FOLDER_GRAPH)
     try:
         with tempfile.TemporaryDirectory() as root:
-            for name, text in files.items():
-                (Path(root) / name).write_text(text)
-            service.ingest(graph, root, "team")
+            git(root, "init", "-q")
+            git(root, "remote", "add", "origin", "https://github.com/precedent-evals/fixture")
+            for files in loads:
+                for old in Path(root).iterdir():
+                    if old.name != ".git":
+                        old.unlink()
+                for name, text in files.items():
+                    (Path(root) / name).write_text(text)
+                git(root, "add", "-A")
+                git(root, "commit", "-q", "--allow-empty", "-m", "decisions")
+                service.ingest(graph, root, "team")
         return service.preflight(graph, changes(diff)).verdict
     except KnowledgeError as error:
         return f"REFUSED: {error}"  # the load stopped, and says why
     finally:
         if FOLDER_GRAPH in database().list_graphs():
             graph.delete()
+
+
+def git(root: str, *args: str) -> None:
+    """Run git in an eval's own throwaway repository (fixed arguments, no shell)."""
+    who = ["-c", "user.name=eval", "-c", "user.email=eval@example.com", "-c", "commit.gpgsign=false"]
+    subprocess.run(["git", "-C", root, *who, *args], check=True, capture_output=True)  # noqa: S603, S607
 
 
 def score_preflight(case: Case) -> tuple[bool, Any]:
@@ -126,8 +143,8 @@ def score_found(case: Case) -> tuple[bool, Any]:
 
 def score_safety(case: Case) -> tuple[bool, Any]:
     given, expected = case["input"], case["expected"]
-    if "files" in given:  # a folder of decisions, then a change checked against it
-        got = folder_verdict(given["files"], given["diff"])
+    if "files" in given or "loads" in given:  # a folder of decisions (loaded once or more), then a change
+        got = folder_verdict(given.get("loads") or [given["files"]], given["diff"])
         return got.startswith(expected["verdict"]), got  # a refusal must also give the expected reason
     if "diff" in given:
         report = service.preflight(backstage(), changes(given["diff"]))

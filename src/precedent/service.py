@@ -13,7 +13,10 @@ from precedent.adapters.falkor import (
     ensure_schema,
     found_quotes,
     found_urls,
+    note_commit,
+    origins,
     retire_found,
+    retire_gone,
     rules,
     save_decision,
 )
@@ -21,9 +24,10 @@ from precedent.connectors import adr, folder
 from precedent.core.authority import Standing, resolve
 from precedent.core.diff import Change, facts
 from precedent.core.doctor import StaleLine, mentions, stale_lines
-from precedent.core.errors import ExtractionError
+from precedent.core.errors import ExtractionError, KnowledgeError
 from precedent.core.grounding import grounded, keep_grounded
-from precedent.core.model import DecisionRecord, Scope
+from precedent.core.model import DecisionRecord, Origin, Scope
+from precedent.core.origin import Earlier, Proof, Reach, clashes, covers, repo_name, retired, taken_without_origin
 from precedent.core.preflight import Report, check
 
 if TYPE_CHECKING:
@@ -54,6 +58,7 @@ class IngestReport(NamedTuple):
     dropped: int = 0  # AI-read scopes whose quote isn't in the source or whose value isn't code
     failed: int = 0  # sources the AI could not read; their decisions are still saved
     found: int = 0  # decisions found in ordinary documents (ADR0014): proposed, may warn, never block
+    retired: int = 0  # decisions whose file this checkout proves is gone (ADR0021)
 
 
 def ingest(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> IngestReport:  # noqa: B008 (immutable)
@@ -65,12 +70,15 @@ def ingest(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> Ingest
     counts: Counter[str] = Counter()
     org, _, source = org.partition("/")
     plan = folder.scan(Path(root))
-    decisions = _read_all(plan.adr_folders, Path(root), org, source)
+    where = _where(Path(root))
+    decisions = [_with_origin(d, where, Path(root)) for d in _read_all(plan.adr_folders, Path(root), org, source)]
+    ensure_schema(graph)
+    earlier = _claim(graph, decisions, where)
     # The AI reads before the first write too, so nothing is written until everything has been read and checked.
     decisions = [_with_scopes(d, ai.adrs, counts) if ai.adrs else d for d in decisions]
-    ensure_schema(graph)
     for record in decisions:
         counts["written" if save_decision(graph, record) else "unchanged"] += 1
+    counts["retired"] = _retire(graph, decisions, earlier, where)
     docs = _Docs(plan.docs, Path(root), f"{org}/{source}" if source else org)
     counts["found"] = _load_docs(graph, docs, ai.docs, counts)
     return IngestReport(**counts)
@@ -83,6 +91,87 @@ def _read_all(adr_folders: list[Path], root: Path, org: str, source: str) -> lis
     decisions = [record for f in adr_folders for record in adr.records(str(f), org, name[f])]
     adr.one_file_per_id((d.id, Path(os.path.relpath(d.sources[0].url, root)).as_posix()) for d in decisions)
     return decisions
+
+
+class Where(NamedTuple):
+    """The repository a load runs in, and what of it the load owns (ADR0021)."""
+
+    repo: folder.Repository
+    reach: Reach
+
+
+def _where(root: Path) -> Where | None:
+    """None outside a git repository with a name: then decisions keep no origin, and nothing is refused or retired.
+
+    The name is the `origin` remote (so a laptop and CI agree), else PRECEDENT_REPO for a repository without one.
+    """
+    repo = folder.repository(root)
+    if repo is None:
+        return None
+    name = repo_name(repo.remote) or _named(os.environ.get("PRECEDENT_REPO"))
+    return Where(repo, Reach(name, repo.prefix)) if name else None
+
+
+def _named(value: str | None) -> str | None:
+    """PRECEDENT_REPO as a repository name, normalised like a remote so a token in it is never kept."""
+    if not value:
+        return None
+    if name := repo_name(value):
+        return name
+    raise KnowledgeError("PRECEDENT_REPO doesn't name a repository: use host/owner/name, like github.com/acme/web")
+
+
+def _with_origin(record: DecisionRecord, where: Where | None, root: Path) -> DecisionRecord:
+    """The file's path inside the repository: git's path to the loaded folder plus the file's path inside it, never
+    a resolved path, so a symlinked file is known by the link's own place."""
+    if where is None:
+        return record
+    path = where.reach.under + Path(os.path.relpath(record.sources[0].url, root)).as_posix()
+    return record.model_copy(update={"origin": Origin(repo=where.reach.repo, path=path)})
+
+
+def _claim(graph: Graph, decisions: list[DecisionRecord], where: Where | None) -> list[Earlier]:
+    """The decisions this load may touch, after refusing to take an id from a file it doesn't own. A load from
+    outside a git repository with a name owns nothing, so it may never take an id a repository owns."""
+    ids = [d.id for d in decisions]
+    earlier = origins(graph, ids, where.reach.repo if where else "")
+    loaded = [(e.decision, e.origin) for e in earlier]
+    if where is None:
+        found = taken_without_origin(ids, loaded)
+    else:
+        found = clashes([(d.id, d.origin) for d in decisions if d.origin], loaded, where.reach)
+    if found:
+        raise KnowledgeError(
+            "; ".join(found) + ". To keep both, load this folder with --source NAME (for example its repository's"
+            " name), or load the folder that holds both if they are in one repository"
+        )
+    return earlier if where else []
+
+
+def _retire(graph: Graph, decisions: list[DecisionRecord], earlier: list[Earlier], where: Where | None) -> int:
+    """Note the commit each committed decision file is in, then retire what this checkout proves is gone: a file
+    that is neither in the checked-out commit nor on disk, last seen at a commit in this checkout's history."""
+    committed = folder.committed(where.repo) if where else None
+    if where is None or committed is None:
+        return 0
+    if where.repo.head:
+        note_commit(graph, [d.id for d in decisions if d.origin and d.origin.path in committed], where.repo.head)
+    owned = [e for e in earlier if e.origin and covers(where.reach, e.origin)]
+    missing = [e for e in owned if e.origin and _gone_from(e.origin.path, committed, where.repo.top)]
+    asked = {c for e in missing for c in (e.commit, e.last) if c}
+    proof = Proof(
+        read=frozenset(d.origin.path for d in decisions if d.origin),
+        missing=frozenset(e.origin.path for e in missing if e.origin),
+        history=frozenset(c for c in asked if folder.in_history(where.repo, c)),
+    )
+    gone = retired(earlier, {d.id for d in decisions}, where.reach, proof)
+    retire_gone(graph, gone)
+    return len(gone)
+
+
+def _gone_from(path: str, committed: set[str], top: Path) -> bool:
+    """Not in the checked-out commit and not on disk: a sparse checkout or a skipped folder doesn't count."""
+    return path not in committed and not (top / path).exists()
 
 
 def _source(source: str, adr_folder: Path, root: Path) -> str:

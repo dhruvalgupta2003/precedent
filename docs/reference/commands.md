@@ -12,7 +12,7 @@ AI instruction files. [Load any folder](../any-folder.md) explains it. Also work
 | Option | What it does |
 |---|---|
 | `--org NAME` | which set of decisions to load into (default: `team`) |
-| `--source NAME` | names this folder, for example `platform`, so two folders that both have an `ADR001` don't clash |
+| `--source NAME` | names this folder, for example `platform`, so two folders or repositories that both have an `ADR001` don't clash. Without it, loading a second repository whose `ADR001` is already loaded from another one stops and says so |
 | `--no-ai` | don't use the AI, even if one is set |
 | `--with claude` | use the Claude Code you already have as the AI, instead of a model key |
 
