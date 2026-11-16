@@ -41,12 +41,16 @@ jobs:
       - run: precedent load docs/adr
       - name: Stop on BLOCK, allow WARN
         env: { BASE: "${{ github.base_ref }}" }
-        run: git diff "origin/$BASE...HEAD" | precedent check || test $? -eq 1
+        run: |
+          git diff "origin/$BASE...HEAD" > "$RUNNER_TEMP/change.diff"
+          precedent check --diff "$RUNNER_TEMP/change.diff" || test $? -eq 1
 ```
 
 Change `docs/adr` if your decision notes live somewhere else. That's all.
 
 - To also stop on **⚠️ take a look**, delete `|| test $? -eq 1` from the last line.
+- The job also stops when Precedent couldn't check (exit `3`): no database, no decisions loaded, or a mistake in
+  `precedent.yaml`. A check that looked at nothing never passes.
 - To let an AI suggest what to look for, add `PRECEDENT_MODEL_EXTRACT` and your AI provider's key to the `precedent
   load` step, from your repository's secrets.
 - No database to start: Precedent's built-in one runs inside the job.
@@ -55,15 +59,21 @@ Change `docs/adr` if your decision notes live somewhere else. That's all.
 
 ## Anywhere else
 
-Any CI system works. Precedent tells it the answer with an exit code: `0` all good, `1` take a look, `2` stop.
+Any CI system works. Precedent tells it the answer with an exit code: `0` all good, `1` take a look, `2` stop,
+`3` it couldn't check (for example no database, or no decisions loaded under that `--org`).
 
 ```sh
+set -e
 uv tool install "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent@v0.3.0"
-precedent load docs/adr && git diff origin/main...HEAD | precedent check
+precedent load docs/adr
+change=$(mktemp)
+git diff origin/main...HEAD > "$change"
+precedent check --diff "$change"
 ```
 
-Keep the `&&`: if the load stops (for example two files would be the same decision), the check must not run
-against an empty database.
+Keep `set -e` and one command per line: if the load stops (for example two files would be the same decision), or
+the change can't be made, the job stops there, and nothing is checked against an empty database or an empty
+change.
 
 On a Windows runner or an older Linux image, install without `[embedded]`, start a FalkorDB server
 (`docker run -d -p 6380:6379 falkordb/falkordb:6.0.4`) and set `FALKORDB_URL=redis://localhost:6380`.

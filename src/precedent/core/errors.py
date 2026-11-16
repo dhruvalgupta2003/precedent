@@ -14,3 +14,10 @@ class KnowledgeError(PrecedentError):
 
 class ExtractionError(PrecedentError):
     """The LLM could not read a source (provider down, bad key, invalid output). Ingest continues without it."""
+
+
+class NothingLoadedError(PrecedentError):
+    """The org holds no decisions, so nothing can be checked: usually a misspelled --org, or a load not run yet.
+
+    It is an error, never CLEAR: a check that looked at nothing must not pass (#66).
+    """

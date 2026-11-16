@@ -4,10 +4,11 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
-from functools import partial
+import traceback
 from pathlib import Path
+from typing import NoReturn
+from urllib.parse import urlsplit, urlunsplit
 
 import redis
 from falkordb import Graph
@@ -19,8 +20,9 @@ from precedent.surfaces.explain import as_json, explain
 from precedent.surfaces.hook import change_from_tool, describe, response
 
 EXIT = {"CLEAR": 0, "WARN": 1, "BLOCK": 2}  # spec §9: CI-friendly
+ERROR = 3  # Precedent couldn't check. Never a verdict's code, so CI fails and a hook never reads it as BLOCK (#65)
+FELL_BACK = "Nothing was piped in, so this checks your uncommitted changes."
 HOOK_TOOLS = "Edit|Write|MultiEdit"
-GIT = partial(subprocess.run, capture_output=True, text=True, check=False)
 CLAUDE_CODE_MODEL = "claude-code:haiku"  # fast and cheap; set PRECEDENT_MODEL_EXTRACT=claude-code:sonnet for more
 
 
@@ -37,16 +39,25 @@ def folder(value: str) -> str:
     return value
 
 
+class _Parser(argparse.ArgumentParser):
+    """A usage mistake exits 3 like any error: argparse's own 2 would read as BLOCK, and stop a Claude Code edit."""
+
+    def error(self, message: str) -> NoReturn:
+        self.print_usage(sys.stderr)
+        self.exit(ERROR, f"{self.prog}: error: {message}\n")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         return args.run(args)
     except redis.ConnectionError as exc:
         print(_no_database(exc), file=sys.stderr)
-        return 1
     except PrecedentError as exc:
         print(exc, file=sys.stderr)
-        return 1
+    except Exception:
+        traceback.print_exc()
+    return ERROR
 
 
 def run_ingest(args: argparse.Namespace) -> int:
@@ -62,6 +73,7 @@ def run_ingest(args: argparse.Namespace) -> int:
     if report.found:
         found = f"Found {report.found} more in other documents"
         print(f"{found}. They are proposed: they can warn, but not stop a change, until someone accepts them.")
+    _print_unused(report, used_ai=bool(ai.adrs or ai.docs))
     if ai.adrs or ai.docs:
         found, failed = _count(report.scopes, "thing"), _count(report.failed, "file")
         skipped = f"skipped {report.dropped} not quoted word for word or not naming code"
@@ -69,40 +81,50 @@ def run_ingest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_unused(report: service.IngestReport, *, used_ai: bool) -> None:
+    """What the load could not use, so an accepted decision never sits there checking nothing unnoticed (#63)."""
+    for path in report.unused:
+        print(f"Not read: {path}. A precedent.yaml must sit in the same folder as the decision notes it describes.")
+    if report.idle:
+        one = report.idle == 1
+        hint = (
+            f"say what {'it' if one else 'each'} means in code in the precedent.yaml beside {'it' if one else 'them'}"
+        )
+        ai = "" if used_ai else ", or load with an AI"
+        print(
+            f"{_count(report.idle, 'accepted decision')} {'has' if one else 'have'} nothing to check yet: {hint}{ai}."
+        )
+
+
 def run_check(args: argparse.Namespace) -> int:
     if args.hook:
         return _hook(args.org)
-    found = service.with_files(changes(_change_text(args.diff)), _top() or Path.cwd())
+    found = service.with_files(changes(_change_text(args.diff)), service.project_root(Path.cwd()))
     report = service.preflight(_graph(args.org), found)
     print(report.model_dump_json(indent=2) if args.format == "json" else describe(report))
     return EXIT[report.verdict]
 
 
 def _change_text(diff: str | None) -> str:
-    """A diff file, a piped diff, or (typed at a terminal with nothing piped in) this repo's uncommitted changes."""
-    if diff == "-" or (diff is None and not sys.stdin.isatty()):
-        return sys.stdin.read()
-    return Path(diff).read_text() if diff else _working_changes()
+    """The change named with --diff (a file, or - for stdin) as given; else a piped diff; else this repo's
+    uncommitted changes. Empty input without a terminal is what agents, scripts and git hooks give: nothing was
+    piped in, not an empty change, so the repo is checked instead of passing (#64)."""
+    if diff:
+        return sys.stdin.read() if diff == "-" else _read(diff)
+    piped = "" if sys.stdin.isatty() else sys.stdin.read()
+    if piped.strip():
+        return piped
+    working = service.working_changes(Path.cwd())
+    if not sys.stdin.isatty():
+        print(FELL_BACK, file=sys.stderr)
+    return working
 
 
-def _working_changes() -> str:
-    """`git diff HEAD`, plus new files git doesn't track yet as if every line were added. Paths are repo-relative."""
-    top = _top()
-    if not top:
-        raise PrecedentError("Not inside a git repository. Give a change with --diff FILE, or pipe a diff in.")
-    new = GIT(["git", "-C", top, "ls-files", "--others", "--exclude-standard", "-z"]).stdout.split("\0")
-    added = (
-        f"+++ b/{p}\n" + "".join(f"+{line}\n" for line in (top / p).read_text(errors="replace").splitlines())
-        for p in new
-        if p
-    )
-    return GIT(["git", "-C", top, "diff", "HEAD"]).stdout + "".join(added)
-
-
-def _top() -> Path | None:
-    """The git repository this runs in, if any."""
-    top = GIT(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
-    return Path(top) if top else None
+def _read(path: str) -> str:
+    try:
+        return Path(path).read_text()
+    except OSError as exc:
+        raise PrecedentError(f"Can't read the change file {path}: {exc.strerror or exc}") from exc
 
 
 def run_hooks_install(args: argparse.Namespace) -> int:
@@ -169,7 +191,7 @@ def _hook(org: str) -> int:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="precedent")
+    parser = _Parser(prog="precedent")
     commands = parser.add_subparsers(dest="command", required=True)
     ingest = commands.add_parser(
         "load", aliases=["ingest"], help="load decisions from any folder: ADRs, and decisions marked in other Markdown"
@@ -231,12 +253,19 @@ def _org_option(command: argparse.ArgumentParser) -> None:
 
 def _no_database(exc: Exception) -> str:
     if url := os.environ.get("FALKORDB_URL"):
-        return f"No FalkorDB at {url}: {exc}. Is the server running?"
+        said = str(exc) if str(exc).endswith((".", "!", "?")) else f"{exc}."
+        return f"No FalkorDB at {_shown(url)}: {said} Is the server running?"
     return (
         "No database. Install Precedent with its built-in one:\n"
         '  uv tool install --force "precedent[embedded] @ git+https://github.com/dhruvalgupta2003/precedent"\n'
         "or start a FalkorDB server: docker run -d -p 6380:6379 falkordb/falkordb:6.0.4"
     )
+
+
+def _shown(url: str) -> str:
+    """The database address without a user, password or query, since error output often lands in shared CI logs."""
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc.rpartition("@")[2], parts.path, "", ""))
 
 
 def _graph(org: str) -> Graph:

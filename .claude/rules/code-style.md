@@ -24,4 +24,4 @@ Write the simplest version first; add a pattern only when the code needs it (rul
 
 **Errors**
 - Raise subclasses of `PrecedentError`; never `except Exception: pass`.
-- Surfaces map errors to exit codes (CLI 0/1/2) or HTTP status. Core code never prints or exits.
+- Surfaces map errors to exit codes (CLI 0/1/2 for verdicts, 3 for errors (ADR0022)) or HTTP status. Core code never prints or exits.

@@ -5,7 +5,8 @@ look for**: the `moment` library, for example. You tell it in a short list calle
 
 ## Write the list
 
-Put `precedent.yaml` in the same folder as your decision notes. Under each decision's ID, add one entry per thing to
+Put `precedent.yaml` in the same folder as your decision notes. One anywhere else in the folder you load isn't
+read, and `precedent load` says so. Under each decision's ID, add one entry per thing to
 look for:
 
 ```yaml

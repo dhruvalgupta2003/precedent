@@ -243,5 +243,7 @@ def _reason(outcome: Outcome, rule: Rule, top: list[Rule]) -> str:
         "retired": f"no longer in force ({rule.status or 'its status is unreadable'})",
         "outranked": f"not reviewed; {leader} is reviewed and takes precedence",
         "disputed": f"disagrees with {others}, and neither replaces the other",
-        "wins": "reviewed and in force" if rule.may_block else "in force, and nothing reviewed disagrees",
+        "wins": "reviewed and in force"
+        if rule.may_block
+        else "not reviewed, so it can only warn; nothing reviewed disagrees",
     }[outcome]

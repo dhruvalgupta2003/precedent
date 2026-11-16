@@ -193,3 +193,47 @@ def test_an_example_in_an_indented_code_block_is_not_a_decision(tmp_path):
     root = tree(tmp_path, {"docs/guide.md": doc})
 
     assert folder.found_in(root / "docs" / "guide.md", root, "team") == []
+
+
+YAML = "ADR0001: [{kind: package, value: moment, polarity: avoid, why: x}]\n"
+
+
+def misplaced(root: Path) -> list[str]:
+    return [p.relative_to(root).as_posix() for p in folder.scan(root).misplaced]
+
+
+def test_a_precedent_yaml_outside_every_decision_folder_is_named_and_one_beside_its_notes_is_not(tmp_path):
+    root = tree(
+        tmp_path,
+        {
+            "docs/adr/0001-use-luxon.md": ADR,
+            "docs/adr/precedent.yaml": YAML,
+            "precedent.yaml": YAML,
+            "x/precedent.yaml": YAML,
+        },
+    )
+
+    assert misplaced(root) == ["precedent.yaml", "x/precedent.yaml"]
+
+
+def test_a_precedent_yaml_that_git_ignores_is_not_named(tmp_path):
+    root = tree(tmp_path, {".gitignore": "build-out/\n", "build-out/precedent.yaml": YAML, "precedent.yaml": YAML})
+    git = partial(subprocess.run, cwd=root, check=True)
+    git(["git", "init", "-q"])
+
+    assert misplaced(root) == ["precedent.yaml"]
+
+
+def test_a_precedent_yaml_that_links_outside_the_folder_is_not_named(tmp_path):
+    root, outside = tmp_path / "repo", tmp_path / "elsewhere"
+    tree(outside, {"precedent.yaml": YAML})
+    tree(root, {"docs/adr/0001-use-luxon.md": ADR})
+    (root / "precedent.yaml").symlink_to(outside / "precedent.yaml")
+
+    assert misplaced(root) == []
+
+
+def test_only_the_exact_name_counts(tmp_path):
+    root = tree(tmp_path, {"precedent.yml": YAML, "my-precedent.yaml": YAML, "precedent.yaml.bak": YAML})
+
+    assert misplaced(root) == []

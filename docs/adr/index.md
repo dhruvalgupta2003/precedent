@@ -32,6 +32,7 @@ All of them:
 | [0019](0019-a-replacement-needs-authority.md) | A replacement needs authority |
 | [0020](0020-one-number-one-decision.md) | One id, one file, and nothing is written until everything is checked |
 | [0021](0021-decisions-remember-where-they-come-from.md) | Decisions remember where they were loaded from |
+| [0022](0022-a-check-that-could-not-look-never-passes.md) | A check that couldn't look never passes |
 
 The full technical design is in [`docs/spec.md`](https://github.com/dhruvalgupta2003/precedent/blob/main/docs/spec.md)
 on GitHub.

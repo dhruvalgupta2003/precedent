@@ -26,7 +26,24 @@ Click a problem to see the fix.
 ??? question "`precedent check` always says all good (CLEAR)"
 
     Precedent knows your decisions, but not what to look for in the code. Add a
-    [`precedent.yaml`](covers.md) next to your decision notes, then run `precedent load` again.
+    [`precedent.yaml`](covers.md) next to your decision notes, then run `precedent load` again. `precedent load`
+    tells you how many accepted decisions have nothing to check yet.
+
+??? failure "It says `No decisions are loaded in org …`"
+
+    Nothing was loaded under that name. Check the spelling of `--org` (or `PRECEDENT_ORG`), or run
+    `precedent load FOLDER --org NAME` first. Precedent stops here with exit code `3`, so a check against nothing
+    never passes in CI.
+
+??? question "`precedent load` says `Not read: …precedent.yaml`"
+
+    That `precedent.yaml` isn't in the same folder as any decision note, so Precedent doesn't know which decisions
+    it describes. Move it into the folder with the notes it describes (for example `docs/adr/`), then load again.
+
+??? question "It says `Nothing was piped in, so this checks your uncommitted changes`"
+
+    `precedent check` got empty input, which is what scripts and agents give when they pipe nothing. It checked
+    your uncommitted changes instead. To check something else, give it with `--diff FILE`.
 
 ??? question "`precedent load` says `0 new or changed`"
 

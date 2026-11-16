@@ -9,10 +9,12 @@ import hashlib
 import os
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
 from precedent.connectors import adr
+from precedent.core.errors import PrecedentError
 from precedent.core.grounding import looks_like_code
 from precedent.core.model import DecisionRecord, Scope, SourceRef
 
@@ -47,12 +49,15 @@ WORD = re.compile(r"[A-Za-z]{2,}")
 class Scan(NamedTuple):
     adr_folders: list[Path]
     docs: list[Path]  # Markdown outside ADR folders (an ADR folder's index or template isn't a decision)
+    misplaced: tuple[Path, ...] = ()  # precedent.yaml files beside no decision note: never read, so a load says so
 
 
 def scan(root: Path) -> Scan:
-    files = markdown_files(root)
-    adr_folders = sorted({p.parent for p in files if adr.adr_id_of(p)})
-    return Scan(adr_folders, [p for p in files if p.parent not in adr_folders])
+    files = _files(root, lambda rel: _markdown(rel) or rel.name == adr.KNOWLEDGE_FILE)
+    notes = [p for p in files if p.name != adr.KNOWLEDGE_FILE]
+    adr_folders = sorted({p.parent for p in notes if adr.adr_id_of(p)})
+    misplaced = tuple(p for p in files if p.name == adr.KNOWLEDGE_FILE and p.parent not in adr_folders)
+    return Scan(adr_folders, [p for p in notes if p.parent not in adr_folders], misplaced)
 
 
 def markdown_files(root: Path) -> list[Path]:
@@ -62,15 +67,23 @@ def markdown_files(root: Path) -> list[Path]:
     folders aren't followed, and a symbolic link to a file counts only if its target is inside the folder, so
     loading never reads anything outside it.
     """
+    return _files(root, _markdown)
+
+
+def _files(root: Path, wanted: Callable[[Path], bool]) -> list[Path]:
+    """The wanted files under root (judged by their path relative to it), skipping dependency, build and hidden
+    folders and anything whose real target is outside root."""
     listed = _git_files(root)
     files = listed if listed is not None else [here / f for here, _, names in root.walk() for f in names]
-    return sorted(p for p in files if _readable(p.relative_to(root)) and adr.inside(p, root))
+    return sorted(p for p in files if wanted(rel := p.relative_to(root)) and not _skipped(rel) and adr.inside(p, root))
 
 
-def _readable(rel: Path) -> bool:
-    folders = rel.parts[:-1]
-    skipped = any(part in SKIP_DIRS or part.startswith(".") for part in folders)
-    return rel.suffix.lower() == ".md" and not skipped and not NOT_DECISIONS.fullmatch(rel.name)
+def _skipped(rel: Path) -> bool:
+    return any(part in SKIP_DIRS or part.startswith(".") for part in rel.parts[:-1])
+
+
+def _markdown(rel: Path) -> bool:
+    return rel.suffix.lower() == ".md" and not NOT_DECISIONS.fullmatch(rel.name)
 
 
 class Repository(NamedTuple):
@@ -120,6 +133,7 @@ def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
         text=True,
         errors="surrogateescape",
         env=env,
+        stdin=subprocess.DEVNULL,  # git never reads what was piped to Precedent, nor waits on a terminal
         check=False,
     )
 
@@ -127,6 +141,42 @@ def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def _git(root: Path, *args: str) -> str | None:
     done = _run_git(root, *args)
     return done.stdout.strip("\n") if done.returncode == 0 else None
+
+
+def top(cwd: Path) -> Path | None:
+    """The git repository a folder is in, as git sees it, or None outside one."""
+    found = _git(cwd, "rev-parse", "--show-toplevel")
+    return Path(found) if found else None
+
+
+def working_changes(cwd: Path) -> str:
+    """The repository's changes since its last commit (before the first one, everything staged), plus new files git
+    doesn't track yet as if every line were added: one diff, repo-relative paths. If git can't list them, that is an
+    error, never "no change": agents and hooks reach this on their own (#64)."""
+    root = top(cwd)
+    if not root:
+        raise PrecedentError("Not inside a git repository. Give a change with --diff FILE, or pipe a diff in.")
+    new = _must_git(root, "ls-files", "--others", "--exclude-standard", "-z").split("\0")
+    added = (
+        f"+++ b/{p}\n" + "".join(f"+{line}\n" for line in (root / p).read_text(errors="replace").splitlines())
+        for p in new
+        if p and adr.inside(root / p, root)  # a link that leads out of the repository, or to a folder, isn't read
+    )
+    return _must_git(root, "diff", _base(root)) + "".join(added)
+
+
+def _base(root: Path) -> str:
+    """The last commit, or before the first one the empty tree, so staged files still count as changes."""
+    if _git(root, "rev-parse", "--verify", "-q", "HEAD") is not None:
+        return "HEAD"
+    return _must_git(root, "hash-object", "-t", "tree", "--stdin").strip()
+
+
+def _must_git(root: Path, *args: str) -> str:
+    done = _run_git(root, *args)
+    if done.returncode != 0:
+        raise PrecedentError(f"git {args[0]} failed, so the changes can't be checked: {done.stderr.strip()}")
+    return done.stdout
 
 
 def _git_files(root: Path) -> list[Path] | None:
