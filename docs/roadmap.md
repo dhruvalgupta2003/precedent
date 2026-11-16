@@ -1,6 +1,7 @@
 # Roadmap
 
-Where Precedent is going, most important first. Ideas and votes are welcome in
+Where Precedent is going, most important first. How it gets there for production teams is in
+[Production architecture](design/production-architecture.md). Ideas and votes are welcome in
 [issues](https://github.com/dhruvalgupta2003/precedent/issues).
 
 ## Next: easier to adopt
