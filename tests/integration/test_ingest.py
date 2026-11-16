@@ -4,7 +4,7 @@ import pytest
 
 from precedent import service
 from precedent.core.diff import changes
-from precedent.core.errors import ExtractionError
+from precedent.core.errors import ExtractionError, NothingLoadedError
 from precedent.core.model import Scope
 
 pytestmark = pytest.mark.integration
@@ -191,7 +191,8 @@ def test_an_ai_quote_that_is_not_in_the_document_is_dropped(graph, tmp_path):
     report = service.ingest(graph, root, "team", docs_ai(found("axios", "axios is banned company-wide")))
 
     assert (report.found, report.dropped) == (0, 1)
-    assert verdict(graph) == "CLEAR"
+    with pytest.raises(NothingLoadedError):  # nothing at all was saved, so the org is still empty (#66)
+        verdict(graph)
 
 
 def test_the_rules_and_the_ai_finding_the_same_sentence_make_one_decision(graph, tmp_path):

@@ -21,29 +21,29 @@ EVENT = {"tool_name": "Write", "tool_input": {"file_path": "/r/a.ts", "content":
 def test_an_org_that_cannot_be_a_graph_name_is_refused(tmp_path, org):
     with pytest.raises(SystemExit) as exited:
         main(["ingest", str(tmp_path), "--org", org])
-    assert exited.value.code == 2
+    assert exited.value.code == 3  # a usage mistake, never 2 (BLOCK)
 
 
 def test_a_missing_folder_is_refused_before_touching_the_database(tmp_path):
     with pytest.raises(SystemExit) as exited:
         main(["ingest", str(tmp_path / "missing"), "--org", "backstage"])
-    assert exited.value.code == 2
+    assert exited.value.code == 3
 
 
-def test_no_falkordb_gives_a_clear_error_and_exit_code_1(tmp_path, monkeypatch, capsys):
+def test_no_falkordb_gives_a_clear_error_and_exit_code_3(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("FALKORDB_URL", "redis://localhost:1")
 
-    assert main(["ingest", str(tmp_path), "--org", "backstage"]) == 1
+    assert main(["ingest", str(tmp_path), "--org", "backstage"]) == 3
     assert "No FalkorDB at redis://localhost:1" in capsys.readouterr().err
 
 
-def test_a_bad_knowledge_file_prints_where_and_exits_1(tmp_path, monkeypatch, capsys):
+def test_a_bad_knowledge_file_prints_where_and_exits_3(tmp_path, monkeypatch, capsys):
     def ingest(*_):
         raise KnowledgeError("precedent.yaml: no ADR 'ADR41' in this folder")
 
     monkeypatch.setattr("precedent.service.ingest", ingest)
 
-    assert main(["ingest", str(tmp_path), "--org", "backstage", "--no-ai"]) == 1
+    assert main(["ingest", str(tmp_path), "--org", "backstage", "--no-ai"]) == 3
     assert "precedent.yaml: no ADR 'ADR41'" in capsys.readouterr().err
 
 
@@ -54,12 +54,12 @@ class Untouchable:
         raise AssertionError("the load touched the database")
 
 
-def test_loading_two_files_with_one_number_exits_1_names_them_and_touches_no_database(tmp_path, monkeypatch, capsys):
+def test_loading_two_files_with_one_number_exits_3_names_them_and_touches_no_database(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("precedent.surfaces.cli._graph", lambda org: Untouchable())
     for name in ("0007-avoid-axios.md", "0007-zz-note.md"):
         (tmp_path / name).write_text("# 7. X\n\n## Status\n\nAccepted\n\n## Decision\n\nUse X.\n")
 
-    assert main(["load", str(tmp_path), "--no-ai"]) == 1
+    assert main(["load", str(tmp_path), "--no-ai"]) == 3
     assert "more than one file is team/ADR0007 (0007-avoid-axios.md, 0007-zz-note.md)" in capsys.readouterr().err
 
 
@@ -181,7 +181,7 @@ def test_hooks_install_user_guards_every_repo_without_touching_existing_hooks(tm
 def test_hooks_install_takes_either_a_project_or_the_user(tmp_path):
     with pytest.raises(SystemExit) as exited:
         main(["hooks", "install", "--org", "acme", "--user", "--project", str(tmp_path)])
-    assert exited.value.code == 2
+    assert exited.value.code == 3
 
 
 class Terminal(io.StringIO):
@@ -217,7 +217,7 @@ def test_check_outside_a_git_repo_says_how_to_give_it_a_change(tmp_path, monkeyp
     monkeypatch.setattr("sys.stdin", Terminal())
     monkeypatch.chdir(tmp_path)
 
-    assert main(["check"]) == 1
+    assert main(["check"]) == 3
     assert "--diff" in capsys.readouterr().err
 
 
@@ -225,10 +225,11 @@ def test_the_org_defaults_to_team_or_precedent_org(monkeypatch):
     used = []
     monkeypatch.setattr("precedent.surfaces.cli._graph", used.append)
     monkeypatch.setattr("precedent.service.preflight", lambda graph, changes: report("CLEAR"))
-    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+    monkeypatch.setattr("sys.stdin", io.StringIO("+++ b/a.ts\n+x\n"))
 
     main(["check"])
     monkeypatch.setenv("PRECEDENT_ORG", "acme")
+    monkeypatch.setattr("sys.stdin", io.StringIO("+++ b/a.ts\n+x\n"))
     main(["check"])
 
     assert used == ["team", "acme"]
@@ -267,7 +268,7 @@ def test_with_no_database_anywhere_it_says_what_to_install(tmp_path, monkeypatch
     monkeypatch.setitem(sys.modules, "redislite.falkordb_client", None)
     monkeypatch.setattr("precedent.adapters.falkor.DEFAULT_URL", "redis://localhost:1")
 
-    assert main(["load", str(tmp_path), "--org", "team"]) == 1
+    assert main(["load", str(tmp_path), "--org", "team"]) == 3
     assert "precedent[embedded]" in capsys.readouterr().err
 
 
@@ -327,13 +328,13 @@ def test_a_very_large_file_is_checked_as_if_new(tmp_path, monkeypatch):
 def test_with_claude_and_no_ai_cannot_both_be_given(tmp_path):
     with pytest.raises(SystemExit) as exited:
         main(["load", str(tmp_path), "--with", "claude", "--no-ai"])
-    assert exited.value.code == 2
+    assert exited.value.code == 3
 
 
-def test_with_claude_but_no_claude_code_installed_exits_1_and_says_why(tmp_path, monkeypatch, capsys):
+def test_with_claude_but_no_claude_code_installed_exits_3_and_says_why(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("PATH", str(tmp_path))
 
-    assert main(["load", str(tmp_path), "--with", "claude"]) == 1
+    assert main(["load", str(tmp_path), "--with", "claude"]) == 3
     assert "Claude Code" in capsys.readouterr().err
 
 

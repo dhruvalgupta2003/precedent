@@ -3,6 +3,9 @@
 Every command works on one set of decisions, named with `--org`. If you have one team, leave it out: the name is
 `team`, or whatever `PRECEDENT_ORG` is set to. Names use lowercase letters, numbers and `-`.
 
+Every command ends with `3` when it couldn't do its job: a mistake in the command, no database, no decisions loaded
+under that `--org`, or a mistake in `precedent.yaml`. `3` is never an answer about your code, so CI stops on it.
+
 ## `precedent load FOLDER`
 
 Reads any folder, including subfolders: decision notes (ADRs) wherever they are, with each folder's
@@ -16,8 +19,9 @@ AI instruction files. [Load any folder](../any-folder.md) explains it. Also work
 | `--no-ai` | don't use the AI, even if one is set |
 | `--with claude` | use the Claude Code you already have as the AI, instead of a model key |
 
-Notes that didn't change are skipped. Ends with `0` when done, `1` on an error (for example a mistake in
-`precedent.yaml`).
+Notes that didn't change are skipped. It also says what it could not use: a `precedent.yaml` that isn't in the
+same folder as any decision note (so it was not read), and accepted decisions with nothing to check yet. Ends with
+`0` when done, `3` on an error (for example a mistake in `precedent.yaml`).
 
 ## `precedent check`
 
@@ -31,10 +35,15 @@ Checks a change against the decisions that still count.
 | `--org NAME` | which set of decisions to use (default: `team`) |
 
 With nothing after it, `precedent check` checks what's piped in (`git diff | precedent check`), or, if nothing is,
-your project's uncommitted changes and new files.
+your project's uncommitted changes and new files. Empty input counts as nothing piped in, so a script or an agent
+with nothing to pipe gets its changes checked, and the command says so. A change given with `--diff` (a file, or
+`-` for what's piped in) is always used as given: an empty one means nothing changed. In a git hook, use
+`git diff --cached | precedent check --diff -`, so a commit with nothing staged isn't checked against your other
+edits.
 
-Ends with `0` all good (CLEAR), `1` take a look (WARN), `2` stop (BLOCK). With `--hook` it always ends with `0`
-and answers in Claude Code's format.
+Ends with `0` all good (CLEAR), `1` take a look (WARN), `2` stop (BLOCK), `3` couldn't check. With `--hook` it ends
+with `0` and answers in Claude Code's format: if Precedent can't check, the edit goes ahead and the reason is
+printed for the log. Only a mistake in the hook command itself ends with `3`, which doesn't stop the edit either.
 
 ## `precedent why NAME`
 
@@ -48,7 +57,7 @@ decision as *not in effect*, with the reason.
 | `--format text\|json` | `text` for people (default), `json` for other tools |
 | `--org NAME` | which set of decisions to use (default: `team`) |
 
-Ends with `0` when a decision is about it, `1` when none is.
+Ends with `0` when a decision is about it, `1` when none is, `3` when no decisions are loaded at all.
 
 ## `precedent doctor`
 
@@ -62,7 +71,7 @@ decision.
 | `--with claude` | use the Claude Code you already have as the AI, instead of a model key |
 | `--org NAME` | which set of decisions to use (default: `team`) |
 
-Ends with `0` when nothing is found, `1` when something is.
+Ends with `0` when nothing is found, `1` when something is, `3` when it couldn't check.
 
 ## `precedent hooks install`
 

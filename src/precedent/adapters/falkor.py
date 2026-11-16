@@ -204,6 +204,11 @@ RETURN n.id, n.status, n.tier, n.confirmed, o.id, o.status, o.tier, o.confirmed
 """
 
 
+def has_decisions(graph: Graph) -> bool:
+    """Whether any decision was ever loaded into this org, even one that has stopped counting since."""
+    return bool(graph.query("MATCH (d:Decision) RETURN d.id LIMIT 1").result_set)
+
+
 def rules(graph: Graph) -> list[Rule]:
     """Every stance a source still states, each told what replaces its decision; only replacements with authority
     count."""

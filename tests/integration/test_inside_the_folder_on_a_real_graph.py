@@ -68,6 +68,11 @@ def test_doctor_never_reads_an_instruction_file_that_leads_outside_the_project(g
     (outside / "notes.md").write_text(f"Always use axios. {LEAK}\n")
     (project / "CLAUDE.md").symlink_to(outside / "notes.md")
     (project / "AGENTS.md").write_text("Use fetch.\n")
+    (tmp_path / "adr").mkdir()  # doctor needs an org with decisions in it (#66)
+    (tmp_path / "adr" / "0001-use-fetch.md").write_text(
+        "# 1. Use fetch\n\n## Status\n\nAccepted\n\n## Decision\n\nFetch.\n"
+    )
+    service.ingest(graph, str(tmp_path / "adr"), "team")
     seen: list[str] = []
 
     files, _ = service.doctor(graph, str(project), lambda text: seen.append(text) or [])

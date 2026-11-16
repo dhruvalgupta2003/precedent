@@ -13,6 +13,7 @@ from precedent.adapters.falkor import (
     ensure_schema,
     found_quotes,
     found_urls,
+    has_decisions,
     note_commit,
     origins,
     retire_found,
@@ -21,10 +22,10 @@ from precedent.adapters.falkor import (
     save_decision,
 )
 from precedent.connectors import adr, folder
-from precedent.core.authority import Standing, resolve
+from precedent.core.authority import Rule, Standing, resolve
 from precedent.core.diff import Change, facts
 from precedent.core.doctor import StaleLine, mentions, stale_lines
-from precedent.core.errors import ExtractionError, KnowledgeError
+from precedent.core.errors import ExtractionError, KnowledgeError, NothingLoadedError
 from precedent.core.grounding import grounded, keep_grounded
 from precedent.core.model import DecisionRecord, Origin, Scope
 from precedent.core.origin import Earlier, Proof, Reach, clashes, covers, repo_name, retired, taken_without_origin
@@ -59,6 +60,8 @@ class IngestReport(NamedTuple):
     failed: int = 0  # sources the AI could not read; their decisions are still saved
     found: int = 0  # decisions found in ordinary documents (ADR0014): proposed, may warn, never block
     retired: int = 0  # decisions whose file this checkout proves is gone (ADR0021)
+    idle: int = 0  # accepted decisions with nothing to check: no precedent.yaml entry, nothing the AI found
+    unused: tuple[str, ...] = ()  # precedent.yaml files not beside any decision note, so never read
 
 
 def ingest(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> IngestReport:  # noqa: B008 (immutable)
@@ -81,7 +84,9 @@ def ingest(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> Ingest
     counts["retired"] = _retire(graph, decisions, earlier, where)
     docs = _Docs(plan.docs, Path(root), f"{org}/{source}" if source else org)
     counts["found"] = _load_docs(graph, docs, ai.docs, counts)
-    return IngestReport(**counts)
+    counts["idle"] = sum(1 for d in decisions if d.status == "accepted" and not d.scopes)
+    unused = tuple(p.relative_to(root).as_posix() for p in plan.misplaced)
+    return IngestReport(**counts, unused=unused)
 
 
 def _read_all(adr_folders: list[Path], root: Path, org: str, source: str) -> list[DecisionRecord]:
@@ -259,16 +264,37 @@ ORDER = {"wins": 0, "disputed": 0, "outranked": 1, "replaced": 2, "retired": 3}
 
 def why(graph: Graph, name: str) -> dict[tuple[str, str], list[Standing]]:
     """Every decision about `name` (a package, a symbol, a path…), the one that wins first, each with its reason."""
-    ranked = resolve(r for r in rules(graph) if r.scope.value.lower() == name.lower())
+    ranked = resolve(r for r in _rules(graph) if r.scope.value.lower() == name.lower())
     return {
         thing: sorted(standings, key=lambda s: (ORDER[s.outcome], s.rule.decision))
         for thing, standings in ranked.items()
     }
 
 
+def _rules(graph: Graph) -> list[Rule]:
+    """Every rule in the org. An org with no decisions at all is an error, never an empty set that passes: it is
+    usually a misspelled org, or a load that hasn't run (#66)."""
+    found = rules(graph)
+    if not found and not has_decisions(graph):
+        raise NothingLoadedError(
+            f"No decisions are loaded in org {graph.name!r}: load them first, or check the org name."
+        )
+    return found
+
+
+def working_changes(cwd: Path) -> str:
+    """The uncommitted changes of the repository `cwd` is in, as a diff (#64)."""
+    return folder.working_changes(cwd)
+
+
+def project_root(cwd: Path) -> Path:
+    """Where changed files are read from: the git repository `cwd` is in, else `cwd` itself."""
+    return folder.top(cwd) or cwd
+
+
 def preflight(graph: Graph, changes: list[Change]) -> Report:
     """Check a change against every live decision in the org's graph (docs/spec.md §7)."""
-    return check(facts(changes), rules(graph))
+    return check(facts(changes), _rules(graph))
 
 
 def readers(model: str | None = None) -> Readers:
@@ -308,7 +334,7 @@ def doctor(graph: Graph, project: str, read_stances: ScopeReader | None = None) 
     """Instruction-file lines in a project that contradict a live decision (scenario R1)."""
     root = Path(project)
     files = sorted({p for pattern in INSTRUCTION_FILES for p in root.glob(pattern) if _instruction_file(p, root)})
-    live = rules(graph)
+    live = _rules(graph)
     found: list[StaleLine] = []
     for path in files:
         text, name = path.read_text(errors="replace"), str(path.relative_to(root))

@@ -1,5 +1,7 @@
 """Which rule wins, and why (ADR0018): a fixed order, the same answer every time, and an honest conflict."""
 
+import pytest
+
 from precedent.core.authority import resolve
 from precedent.core.diff import Change, facts
 from precedent.core.model import Scope
@@ -101,6 +103,29 @@ def test_each_standing_says_why_in_plain_words():
     assert reasons["team/ADR1"] == "replaced by team/ADR3"
     assert "reviewed" in reasons["team/ADR3"]
     assert "team/ADR3" in reasons["team/doc-axios"]
+
+
+UNREVIEWED_WINNERS = {
+    "found in a document": {"reviewed": False},
+    "a proposed note": {"status": "proposed"},
+    "read by an AI from an accepted note": {"reviewed": False, "status": "accepted", "tier": "structured"},
+    "not confirmed": {"confirmed": False},
+}
+
+
+@pytest.mark.parametrize("fields", UNREVIEWED_WINNERS.values(), ids=UNREVIEWED_WINNERS.keys())
+def test_an_unreviewed_winner_is_never_called_in_force(fields):
+    """#63: `load` calls these "proposed: they can warn, but not stop a change"; `why` must not say "in force"."""
+    [standing] = resolve([stance("team/doc-axios", "avoid", **fields)])[("package", "axios")]
+
+    assert standing.outcome == "wins"
+    assert standing.reason == "not reviewed, so it can only warn; nothing reviewed disagrees"
+
+
+def test_a_reviewed_winner_is_reviewed_and_in_force():
+    [standing] = resolve([stance("team/ADR3", "avoid")])[("package", "axios")]
+
+    assert standing.reason == "reviewed and in force"
 
 
 def test_a_stance_that_is_only_about_something_is_not_ranked():

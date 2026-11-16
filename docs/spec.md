@@ -251,7 +251,8 @@ precedent capture --transcript FILE [--session ID] # candidate decisions from ne
 precedent hooks install      # writes the Claude Code hook config into .claude/settings.local.json (personal, git-ignored)
 precedent serve              # API + MCP (HTTP) + UI on one port
 ```
-`check` exits 2 on BLOCK, 1 on WARN, 0 on CLEAR (CI-friendly).
+`check` exits 2 on BLOCK, 1 on WARN, 0 on CLEAR (CI-friendly), and every command exits 3 when it couldn't do its job
+(a usage mistake, no database, an org with no decisions, a bad `precedent.yaml`): never a verdict's code (#65).
 
 ### MCP (FastMCP, streamable HTTP + stdio)
 | Tool | Args | Returns |

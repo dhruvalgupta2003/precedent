@@ -43,4 +43,5 @@ instructions (`.github/copilot-instructions.md`).
 - `--project PATH` checks a different project folder.
 - `--no-ai` skips the AI, even if one is set.
 
-It ends with exit code `1` when it finds something, so you can also run it in [CI](ci.md).
+It ends with exit code `1` when it finds something, and `3` when it couldn't check, so you can also run it in
+[CI](ci.md).
