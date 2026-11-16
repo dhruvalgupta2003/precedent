@@ -172,7 +172,7 @@ Verified data points (Day-0 checks, 2026-10-13; snapshots: backstage@0863f03, ku
 records() → extract (LLM, only missing fields) → resolve → write → validate
 ```
 
-1. **Extract** — only for sections the deterministic parse can't fill. One Pydantic AI call per record section with the Pydantic model as `output_type` (structured output works across providers; model from `PRECEDENT_MODEL_EXTRACT`). Every returned fact must include `quote`; facts without a verbatim quote found in the source text are dropped. Cache by `(source sha, section, prompt version)`.
+1. **Extract** — only for sections the deterministic parse can't fill. One Pydantic AI call per record section with the Pydantic model as `output_type` (structured output works across providers; model from `PRECEDENT_MODEL_EXTRACT`). Every returned fact must include `quote`; facts without a verbatim quote found in the source text are dropped, and so are facts whose quote doesn't name them (#67). From a decision note or document (not an instruction file) that addresses an AI reader anywhere, no fact is kept; they are counted (#68, ADR0023). Cache by `(source sha, section, prompt version)`.
 2. **Resolve**
    - Person: lowercase handle without `@`.
    - Scope: normalise packages (`node-fetch`), paths (strip `./`, keep globs), components via a small alias map (`pkg/kubelet` → `kubelet`).

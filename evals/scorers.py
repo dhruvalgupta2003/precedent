@@ -22,6 +22,7 @@ from precedent.connectors import adr
 from precedent.core.diff import changes
 from precedent.core.errors import ExtractionError, KnowledgeError
 from precedent.core.grounding import grounded, keep_grounded
+from precedent.core.model import Scope
 from precedent.service import ScopeReader
 
 HERE = Path(__file__).parent
@@ -63,10 +64,12 @@ def backstage() -> Graph:
     return graph
 
 
-def folder_verdict(loads: list[dict[str, str]], diff: str) -> str:
+def folder_verdict(loads: list[dict[str, str]], diff: str, ai: list[dict] | None = None) -> str:
     """Load a small folder of decisions into its own graph, once per file set (the folder holds exactly that set
     each time, committed in a git repository so a deleted file can be proven deleted), check a diff against it,
-    then delete the graph."""
+    then delete the graph. `ai` replays what a model answered for every note and document, so the checks on AI
+    findings run on the answers real models gave, at no cost."""
+    readers = service.Readers(adrs=replay(ai), docs=replay(ai)) if ai else service.Readers()
     graph = fresh(FOLDER_GRAPH)
     try:
         with tempfile.TemporaryDirectory() as root:
@@ -80,13 +83,20 @@ def folder_verdict(loads: list[dict[str, str]], diff: str) -> str:
                     (Path(root) / name).write_text(text)
                 git(root, "add", "-A")
                 git(root, "commit", "-q", "--allow-empty", "-m", "decisions")
-                service.ingest(graph, root, "team")
+                service.ingest(graph, root, "team", readers)
         return service.preflight(graph, changes(diff)).verdict
     except KnowledgeError as error:
         return f"REFUSED: {error}"  # the load stopped, and says why
     finally:
         if FOLDER_GRAPH in database().list_graphs():
             graph.delete()
+
+
+def replay(answer: list[dict]) -> ScopeReader:
+    def read(text: str) -> list[Scope]:
+        return [Scope.model_validate({**found, "extracted": True}) for found in answer]
+
+    return read
 
 
 def git(root: str, *args: str) -> None:
@@ -144,7 +154,7 @@ def score_found(case: Case) -> tuple[bool, Any]:
 def score_safety(case: Case) -> tuple[bool, Any]:
     given, expected = case["input"], case["expected"]
     if "files" in given or "loads" in given:  # a folder of decisions (loaded once or more), then a change
-        got = folder_verdict(given.get("loads") or [given["files"]], given["diff"])
+        got = folder_verdict(given.get("loads") or [given["files"]], given["diff"], given.get("ai"))
         return got.startswith(expected["verdict"]), got  # a refusal must also give the expected reason
     if "diff" in given:
         report = service.preflight(backstage(), changes(given["diff"]))

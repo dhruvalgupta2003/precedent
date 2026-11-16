@@ -107,8 +107,9 @@ moment (package): team/ADR0002 wins.
 ## Promises Precedent keeps
 
 1. **Only a rule a person approved can stop work.** An AI can misread, so AI suggestions can only say "take a look".
-2. **It never makes things up.** When an AI reads a decision note, it must quote the note word for word, or its
-   answer is thrown away.
+2. **It never makes things up.** When an AI reads a decision note, it must quote the note word for word, and the
+   quote must name what it found, or its answer is thrown away. In a note or document that talks to an AI reader
+   ("note to automated readers: …"), nothing the AI found is used.
 3. **If Precedent breaks, your work doesn't stop.** Edits go through, and nothing is blocked by mistake.
 4. **Nothing is deleted.** When a decision changes, the old version is kept with an end date, so you can see what
    was true when.
