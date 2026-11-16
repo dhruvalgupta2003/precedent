@@ -248,7 +248,7 @@ A check in `checks.yaml` **only ever warns**. Drafts land here.
 ```yaml
 # homes/payments/promotions.yaml
 - check: payments-db-only-in-api
-  snapshot: { engine: package, value: "@acme/payments-db", polarity: avoid, where: [...], except: [...], why: ... }
+  snapshot: { decision: ADR0042, engine: package, value: "@acme/payments-db", polarity: avoid, where: [...], except: [...], why: ... }
   scope: all                  # all | new-code
   from: 2026-12-01            # optional: warns until this date, blocks after
   critical: false             # true: no overrides, ignores pins
