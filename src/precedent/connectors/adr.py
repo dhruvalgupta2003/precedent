@@ -14,6 +14,7 @@ from typing import NamedTuple
 import yaml
 from pydantic import ValidationError
 
+from precedent.connectors import yamlfile
 from precedent.core.errors import KnowledgeError
 from precedent.core.grounding import looks_like_code
 from precedent.core.model import DecisionRecord, Scope, SourceRef, Status, normalise_status
@@ -150,25 +151,10 @@ def _knowledge(path: Path, known: set[str]) -> dict[str, list[Scope]]:
     return found
 
 
-class _StrictLoader(yaml.SafeLoader):
-    """Safe YAML where a key written twice is an error: a second ADR014 block would silently erase the first."""
-
-    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict:
-        seen: set[str] = set()
-        for key, _ in node.value:
-            if str(key.value) in seen:
-                raise yaml.MarkedYAMLError(problem=f"{key.value} is written twice", problem_mark=key.start_mark)
-            seen.add(str(key.value))
-        return super().construct_mapping(node, deep)
-
-
 def _load(path: Path) -> dict:
-    if path.is_symlink():  # an error message must never echo lines of a file outside the repo
-        raise KnowledgeError(f"{KNOWLEDGE_FILE} must be a regular file, not a link")
-    try:
-        data = yaml.load(path.read_text(), Loader=_StrictLoader) or {}  # noqa: S506 (a SafeLoader)
-    except yaml.YAMLError as exc:
-        raise KnowledgeError(f"{KNOWLEDGE_FILE}: {exc}") from exc
+    data = yamlfile.parse(yamlfile.read(path, KNOWLEDGE_FILE), KNOWLEDGE_FILE)
+    if data is None:
+        return {}
     if not isinstance(data, dict):
         raise KnowledgeError(f"{KNOWLEDGE_FILE}: expected ADR ids at the top level")
     return data

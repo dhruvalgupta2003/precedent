@@ -34,6 +34,7 @@ All of them:
 | [0021](0021-decisions-remember-where-they-come-from.md) | Decisions remember where they were loaded from |
 | [0022](0022-a-check-that-could-not-look-never-passes.md) | A check that couldn't look never passes |
 | [0023](0023-an-ai-finding-must-name-what-it-quotes.md) | An AI finding must name what it quotes, and never obey the text |
+| [0024](0024-checks-warn-promotions-block.md) | Checks warn, promotions block, and a file's home is its folder |
 
 The full technical design is in [`docs/spec.md`](https://github.com/dhruvalgupta2003/precedent/blob/main/docs/spec.md)
 on GitHub.

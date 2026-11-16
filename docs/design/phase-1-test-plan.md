@@ -40,7 +40,7 @@ New: `core/checks.py`, `core/places.py`, `connectors/checks_file.py`. Nothing re
 - A `checks.yaml` loads into checks with the home of its folder; a `promotions.yaml` beside it loads into promotions.
 - A v0.3 `precedent.yaml` loads into the same checks (engine from kind, `where: ["**"]`), and in local mode into a
   promotion for each rule, so it blocks exactly as today.
-- Both files in one folder: refused, so nobody has to guess which one wins.
+- Both formats for one set of decisions: refused by the builder, which sees the whole tree (phase 1b).
 - A `places.yaml` defines tags and owners. A repo's file can use only its own tags.
 
 **Edge cases** (each a table row: input, expected check or the exact error)
@@ -48,22 +48,21 @@ New: `core/checks.py`, `core/places.py`, `connectors/checks_file.py`. Nothing re
   - Unknown fields are refused, never ignored: a typo like `polartiy` must not drop a stance silently.
 - `id`:
   - the slug pattern, too long, case;
-  - duplicates in one file, across files, and across the org and repo layers.
+  - duplicates in one file. Duplicates across files and layers are the builder's (phase 1b).
 - `decision` that names no note in the folder (as today's `precedent.yaml` check).
 - `quote`:
   - not in the note;
   - in the note but not naming the rule;
   - names it only through a look-alike letter.
 - `why` and `quote` both missing.
-- `mode` schedules:
-  - out of order, the same date twice, a date in the past (allowed: it's history);
-  - a missing final mode, an unknown mode, a wrong date format, time zones (dates are UTC days).
 - `where` and `except`:
   - every rejected form;
-  - `except` with nothing in common with `where` (allowed, with a warning);
-  - a tag that isn't defined, and a tag from another repo;
+  - repository prefixes, which only the org home may use;
+  - a tag's syntax here; whether it has a place inside the home is the builder's (phase 1b);
   - globs with unicode, spaces and case.
-- `places.yaml`: a cycle, an unknown parent, a place without an owner, a team of one, an empty tree.
+- `places.yaml`: a place without an owner, an owner that isn't a team, two places on one folder, an empty tree.
+  Cycles can't happen: parents follow from folders. A team's size is checked against GitHub by `precedent/policy`
+  (phase 3).
 - Homes by folder:
   - a `precedent/` folder at a repo root, and under a mapped service path;
   - under an unmapped path (refused);
@@ -96,7 +95,9 @@ New: `core/checks.py`, `core/places.py`, `connectors/checks_file.py`. Nothing re
 - Messages never echo more than 80 characters of file text, and control characters are spelled out.
 
 **Properties** (Hypothesis)
-- Parse, serialise and parse again gives equal checks.
+- `precedent.yaml` reads exactly as today's loader reads it.
+- Without `**`, a glob matches like Python's `fnmatch`, segment by segment.
+- Parse, serialise and parse again: with the serialiser, in phase 3.
 - Field order and comments never change the result.
 - Any v0.3 `precedent.yaml` that loads today gives checks that match today's scopes one to one.
 
