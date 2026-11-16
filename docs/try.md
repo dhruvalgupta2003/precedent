@@ -51,9 +51,13 @@ The first time takes about a minute while uv gets everything ready. Then you'll 
 
 ```text
 Loaded 15 decisions into 'team': 15 new or changed, 0 already up to date.
+11 accepted decisions have nothing to check yet: say what each means in code in the precedent.yaml beside them, or load with an AI.
 ```
 
 </div>
+
+The second line is a hint: in this demo, only a few decisions say what to look for in code. That's enough to see
+how it works; [Tell it what to look for](covers.md) shows how to add the rest.
 
 One of these decisions, ADR010, says: **use Luxon for dates, not Moment.**
 
