@@ -41,6 +41,8 @@ nav = [
     { "What it can't do yet" = "limits.md" },
     { "Roadmap" = "roadmap.md" },
     { "Design decisions" = "adr/index.md" },
+    { "Production architecture" = "design/production-architecture.md" },
+    { "Phase 1 test plan" = "design/phase-1-test-plan.md" },
   ] },
 ]
 
