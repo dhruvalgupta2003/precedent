@@ -76,8 +76,13 @@ def run_ingest(args: argparse.Namespace) -> int:
     _print_unused(report, used_ai=bool(ai.adrs or ai.docs))
     if ai.adrs or ai.docs:
         found, failed = _count(report.scopes, "thing"), _count(report.failed, "file")
-        skipped = f"skipped {report.dropped} not quoted word for word or not naming code"
+        skipped = f"skipped {report.dropped} not quoted word for word, about something else, or not naming code"
         print(f"The AI found {found} to look for; {skipped}; {failed} failed.")
+    if report.planted:
+        print(
+            f"Ignored {_count(report.planted, 'thing')} the AI found in paragraphs that talk to an AI reader instead "
+            "of stating a decision. Someone may have planted them: look for notes addressed to AI in your documents."
+        )
     return 0
 
 

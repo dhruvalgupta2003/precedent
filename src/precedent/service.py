@@ -26,7 +26,7 @@ from precedent.core.authority import Rule, Standing, resolve
 from precedent.core.diff import Change, facts
 from precedent.core.doctor import StaleLine, mentions, stale_lines
 from precedent.core.errors import ExtractionError, KnowledgeError, NothingLoadedError
-from precedent.core.grounding import grounded, keep_grounded
+from precedent.core.grounding import grounded, keep_grounded, talks_to_a_reader, without_planted
 from precedent.core.model import DecisionRecord, Origin, Scope
 from precedent.core.origin import Earlier, Proof, Reach, clashes, covers, repo_name, retired, taken_without_origin
 from precedent.core.preflight import Report, check
@@ -56,7 +56,8 @@ class IngestReport(NamedTuple):
     written: int = 0
     unchanged: int = 0
     scopes: int = 0  # AI-read scopes kept
-    dropped: int = 0  # AI-read scopes whose quote isn't in the source or whose value isn't code
+    dropped: int = 0  # AI-read scopes whose quote isn't in the source or about them, or whose value isn't code
+    planted: int = 0  # AI-read scopes quoting a paragraph that talks to an AI reader (#68)
     failed: int = 0  # sources the AI could not read; their decisions are still saved
     found: int = 0  # decisions found in ordinary documents (ADR0014): proposed, may warn, never block
     retired: int = 0  # decisions whose file this checkout proves is gone (ADR0021)
@@ -195,11 +196,18 @@ def _load_docs(graph: Graph, docs: _Docs, read: ScopeReader | None, counts: Coun
     for record in found:
         save_decision(graph, record)
     prefix, urls = f"{docs.prefix}/", [str(d) for d in docs.paths]
-    still = [i for i, url, quote in found_quotes(graph, prefix, urls) if grounded(quote, folder.body(Path(url)))]
+    still = [i for i, url, quote in found_quotes(graph, prefix, urls) if _still_said(quote, Path(url))]
     under = "" if str(docs.root) == "." else f"{docs.root}/"
     gone = [u for u in found_urls(graph, prefix) if _inside(u, under) and not Path(u).exists()]
     retire_found(graph, prefix, urls + gone, [r.id for r in found] + still)
     return len(found)
+
+
+def _still_said(quote: str, doc: Path) -> bool:
+    """A found decision stays while its sentence is in its document, unless the document talks to an AI reader: what
+    an AI found there before that was checked (#68) must not stay."""
+    body = folder.body(doc)
+    return grounded(quote, body) and not talks_to_a_reader(body)
 
 
 def _found_in(doc: Path, docs: _Docs, read: ScopeReader | None, counts: Counter[str]) -> list[DecisionRecord]:
@@ -213,10 +221,19 @@ def _found_in(doc: Path, docs: _Docs, read: ScopeReader | None, counts: Counter[
     except ExtractionError:
         counts["failed"] += 1
         return marked
-    kept = keep_grounded(scopes, text)
-    counts["scopes"] += len(kept)
-    counts["dropped"] += len(scopes) - len(kept)
+    kept = _keep(scopes, text, counts)
     return folder.merge(marked + folder.from_scopes(doc, docs.root, docs.prefix, kept))
+
+
+def _keep(found: list[Scope], text: str, counts: Counter[str]) -> list[Scope]:
+    """What an AI read from a decision or a document that may enter the graph: grounded, named by its quote, and
+    not quoted from a paragraph that talks to an AI reader (docs/spec.md §6, #67, #68)."""
+    checked = keep_grounded(found, text)
+    kept = without_planted(checked, text)
+    counts["scopes"] += len(kept)
+    counts["dropped"] += len(found) - len(checked)
+    counts["planted"] += len(checked) - len(kept)
+    return kept
 
 
 def _inside(url: str, under: str) -> bool:
@@ -358,9 +375,7 @@ def _with_scopes(record: DecisionRecord, read_scopes: ScopeReader, counts: Count
     except ExtractionError:
         counts["failed"] += 1
         return record
-    kept = keep_grounded(found, text)
-    counts["scopes"] += len(kept)
-    counts["dropped"] += len(found) - len(kept)
+    kept = _keep(found, text, counts)
     declared = {(s.kind, s.value, s.polarity) for s in record.scopes}  # reviewed knowledge wins (ADR0013)
     extra = tuple(s for s in kept if (s.kind, s.value, s.polarity) not in declared)
     return record.model_copy(update={"scopes": record.scopes + extra})

@@ -91,7 +91,9 @@ precedent load .
 
 - It looks only for decisions **already made**. Questions, proposals and descriptions of how the code works today are
   not decisions.
-- It must quote the document word for word, or its answer is thrown away.
+- It must quote the document word for word, and the quote must name what it found, or its answer is thrown away.
+- In a document that talks to an AI reader ("note to automated readers: …"), nothing the AI found is used, so a
+  planted instruction in the usual forms can't add a warning.
 - What it finds is treated like everything found in documents (below): it can warn, never stop.
 - Answers are saved on your computer, so loading the same documents again is free.
 

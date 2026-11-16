@@ -375,6 +375,23 @@ def test_load_with_ai_sums_up_what_the_ai_read(tmp_path, monkeypatch, capsys):
 
     assert main(["load", str(tmp_path)]) == 0
     assert (
-        "The AI found 1 thing to look for; skipped 2 not quoted word for word or not naming code; 1 file failed."
-        in (capsys.readouterr().out)
+        "The AI found 1 thing to look for; skipped 2 not quoted word for word, about something else, or not naming "
+        "code; 1 file failed." in (capsys.readouterr().out)
     )
+
+
+def test_load_with_ai_says_what_it_ignored_as_planted(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("precedent.service.readers", lambda model=None: Readers(adrs=lambda text: []))
+    monkeypatch.setattr("precedent.service.ingest", lambda *args: IngestReport(written=1, scopes=1, planted=2))
+
+    assert main(["load", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "Ignored 2 things the AI found in paragraphs that talk to an AI reader" in out
+
+
+def test_load_says_nothing_about_planted_text_when_there_is_none(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("precedent.service.readers", lambda model=None: Readers(adrs=lambda text: []))
+    monkeypatch.setattr("precedent.service.ingest", lambda *args: IngestReport(written=1, scopes=1))
+
+    assert main(["load", str(tmp_path)]) == 0
+    assert "talk to an AI" not in capsys.readouterr().out

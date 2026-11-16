@@ -49,9 +49,10 @@ def test_keep_grounded_drops_made_up_quotes():
     ],
 )
 def test_an_ai_read_scope_must_look_like_code(kind, value, usable):
-    scope = Scope.model_validate({"kind": kind, "value": value, "polarity": "avoid", "quote": "q", "extracted": True})
+    quote = f"Avoid {value} here."  # names the value, so only its shape decides (#67)
+    scope = Scope.model_validate({"kind": kind, "value": value, "polarity": "avoid", "quote": quote, "extracted": True})
 
-    assert keep_grounded([scope], "q") == ([scope] if usable else [])
+    assert keep_grounded([scope], quote) == ([scope] if usable else [])
 
 
 def test_an_exception_that_does_not_look_like_code_is_dropped_but_the_stance_kept():
@@ -60,10 +61,10 @@ def test_an_exception_that_does_not_look_like_code_is_dropped_but_the_stance_kep
             "kind": "symbol",
             "value": "export default",
             "polarity": "avoid",
-            "quote": "q",
+            "quote": "We don't use default exports.",
             "extracted": True,
             "unless": ["React.lazy", "when it is absolutely necessary for the build"],
         }
     )
 
-    assert keep_grounded([scope], "q")[0].unless == ("React.lazy",)
+    assert keep_grounded([scope], "We don't use default exports.")[0].unless == ("React.lazy",)

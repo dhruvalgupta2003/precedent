@@ -69,13 +69,16 @@ precedent load docs/adr
 
 ```text
 Loaded 12 decisions into 'team': 3 new or changed, 9 already up to date.
-The AI found 14 things to look for; skipped 1 not quoted word for word or not naming code; 0 files failed.
+The AI found 14 things to look for; skipped 1 not quoted word for word, about something else, or not naming code; 0 files failed.
 ```
 
 </div>
 
 - What the AI finds can only say **⚠️ take a look**, never **🛑 stop**, because an AI can misread a sentence.
-- It must quote your note word for word, or its answer is thrown away.
+- It must quote your note word for word, and the quote must name what it found ("Prisma" for `@prisma/client`,
+  "default exports" for `export default`), or its answer is thrown away.
+- In a note that talks to an AI reader ("note to automated readers: …"), nothing the AI found is used, and the load
+  says how many it ignored, so you can look for a planted instruction. `precedent.yaml` entries still count.
 - Answers are saved on your computer, so loading the same notes again is free.
 - Any [Pydantic AI model](https://ai.pydantic.dev/models/) works, such as `openai:...` or `openrouter:...`.
 
