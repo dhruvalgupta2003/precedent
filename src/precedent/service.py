@@ -1,5 +1,6 @@
 """The Precedent facade every surface calls (ADR0009)."""
 
+import json
 import os
 from collections import Counter
 from collections.abc import Callable
@@ -40,7 +41,17 @@ if TYPE_CHECKING:
     from precedent.adapters.llm import Kind
 
 ScopeReader = Callable[[str], list[Scope]]
-VERSION = metadata.version("precedent")
+
+
+def installed_version() -> str:
+    """This Precedent's release, plus its commit when installed from git: an install from main between releases may
+    rank rules differently, so it is another version."""
+    found = metadata.distribution("precedent")
+    commit = json.loads(found.read_text("direct_url.json") or "{}").get("vcs_info", {}).get("commit_id")
+    return f"{found.version}+{commit[:12]}" if commit else found.version
+
+
+VERSION = installed_version()
 
 
 class Readers(NamedTuple):
@@ -141,8 +152,9 @@ def summary(bundle: Bundle) -> Summary:
 
 
 def bundle_path(org: str) -> Path:
-    """Beside the built-in database's file and named after it, so two databases never share a bundle."""
-    db = database_path()
+    """Beside the built-in database's file and named after it, so two databases never share a bundle, and one
+    database named two ways (a link) never has two."""
+    db = database_path().resolve()
     return db.with_name(f"{db.name}.bundles") / f"{org}.json"
 
 

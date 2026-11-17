@@ -5,7 +5,6 @@ that can't be trusted is never read, and the check reads the database instead, s
 it. With a server, a teammate's load changes what is in force, so every check reads the server.
 """
 
-import os
 import subprocess
 from collections.abc import Callable
 from functools import partial
@@ -125,6 +124,14 @@ def test_two_databases_in_one_folder_never_share_a_bundle(built_in, monkeypatch,
     assert opened == ["test-bundle"]
 
 
+def test_one_database_named_two_ways_has_one_bundle(built_in, monkeypatch, opened):
+    (built_in / "db" / "alias.db").symlink_to(built_in / "db" / "precedent.db")
+    monkeypatch.setenv("PRECEDENT_DB", str(built_in / "db" / "alias.db"))
+
+    assert check(built_in) == 2
+    assert opened == []  # the bundle the load saved, not a second one going stale beside it
+
+
 def database_down(org: str) -> None:
     raise redis.ConnectionError("down")
 
@@ -184,7 +191,8 @@ def test_two_loads_of_one_org_never_run_at_once(built_in, monkeypatch, capsys):
 
 
 def test_with_a_server_nothing_is_saved_and_every_check_sees_the_latest_load(graph, tmp_path, monkeypatch):
-    monkeypatch.setenv("FALKORDB_URL", os.environ.get("FALKORDB_URL", "redis://localhost:6380"))
+    monkeypatch.setenv("FALKORDB_URL", "redis://db.internal:6379")  # a server the team shares
+    monkeypatch.setattr("precedent.service.open_graph", lambda org: graph)  # here, this test's own graph
     service.load(graph, str(decisions(tmp_path / "repo")), "team")
     assert service.preflight(service.read_bundle(graph.name), changes(DIFF)).verdict == "BLOCK"
 

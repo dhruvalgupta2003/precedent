@@ -28,7 +28,8 @@ alone. This one makes `check` read it without changing a single verdict.
    - another format;
    - saved for another org;
    - saved by another version of Precedent. Its rules were ranked by that version's code, and a fix to the ranking
-     must count at once, not at the next load.
+     must count at once, not at the next load. An install from git counts its commit as part of the version, so
+     an install from `main` between releases is another version too.
    Only a load saves, so a check never waits on a load. With no database either, the check exits `3`, as before.
 5. **With a server, nothing is saved.** A teammate's load changes what is in force, and a saved copy on one laptop
    would go stale. With `FALKORDB_URL` set, every check reads the server.
@@ -40,7 +41,8 @@ alone. This one makes `check` read it without changing a single verdict.
      load is running.
    - Files are readable only by their owner.
 7. **A bundle belongs to one database.** It sits in a folder named after the database's file
-   (`precedent.db.bundles/`), so two databases in one folder never share one.
+   (`precedent.db.bundles/`), so two databases in one folder never share one. The path is resolved first, so one
+   database reached through a link never gets a second bundle that goes stale.
 8. **The gate for switching: the same verdict everywhere.** Every eval case and every integration scenario is
    checked twice and the reports must match: through the bundle, saved to bytes and read back, and through the
    database's rules alone.
@@ -75,6 +77,11 @@ alone. This one makes `check` read it without changing a single verdict.
 - Check output names a decision file by its path inside the repository, so a CI log shows no home folders.
 - A document loaded by an absolute path is still named by that path, so its rule differs between two checkouts.
   Loading by a relative path, as the CI recipes do, gives the same bundle everywhere.
+- Two small risks are accepted:
+  - **A forged bundle** in a data folder that other users can write to is read. Such a folder exposes the database
+    file the same way, so the bundle adds no new hole. Keep `PRECEDENT_DB` in your own folder.
+  - **Deleting only the database file** leaves its bundle, so the old rules keep blocking until the next load. They
+    are stricter than an empty database, never looser. To start over, delete the whole data folder.
 - Moved to phase 1c, which first reads `checks.yaml` and `promotions.yaml` from the tree:
   - refusing both formats for one set of decisions;
   - ids repeated across files and layers;
@@ -85,6 +92,7 @@ alone. This one makes `check` read it without changing a single verdict.
   - every kind of damage is refused;
   - a bundle that is missing, cut short, edited, of another format, version or org, or from another database is
     never read, and the check still blocks from the database;
+  - an install from git names its commit in the version, and one database reached through a link has one bundle;
   - a check never saves or locks anything;
   - a load that fails half way leaves no bundle behind;
   - a second load waits, then stops with a clear message;
