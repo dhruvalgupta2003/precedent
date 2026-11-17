@@ -186,7 +186,8 @@ Idempotent: re-running on unchanged input writes nothing (content hash per recor
 
 ## 7. Pre-flight (deterministic core)
 
-**Input:** unified diff and/or free-text plan, `org`, optional `paths`.
+**Input:** unified diff and/or free-text plan, `org`, optional `paths`. The rules come from the org's bundle, which
+each load saves; a bundle that can't be trusted is never read, and the rules come from the graph instead (ADR0025).
 
 **Steps**
 1. **Diff facts** (stdlib `re`): changed paths; added lines → imports (`import … from 'x'`, `require('x')`, `import x`, `from x import`), dependency additions in `package.json` / `pyproject.toml` / `requirements*.txt`, removed imports.
@@ -245,6 +246,7 @@ precedent load <dir> [--org NAME] [--source NAME] [--no-ai]   # alias: ingest; i
 precedent ingest kep <keps-dir> --org kubernetes [--sigs sig-node,sig-apps]
 precedent why "<question>" --org backstage
 precedent check [--org NAME] [--diff FILE|-] [--plan "text"] [--format text|json|md]   # no --diff: piped input, else the repo's uncommitted changes + untracked files
+precedent status [--org NAME]   # what a check reads: rules, how many can block, when the last load saved them (ADR0025)
 precedent review [--accept ID | --reject ID]
 precedent context [--paths …] [--budget 1500]    # decisions + recent attempts for this repo/branch/files (hook: SessionStart)
 precedent capture --transcript FILE [--session ID] # candidate decisions from new turns (hook: PreCompact/Stop)

@@ -21,14 +21,26 @@ def connect(url: str | None, path: Path) -> FalkorDB:
     """
     if url:
         return FalkorDB.from_url(url)
-    try:
-        from redislite.falkordb_client import FalkorDB as BuiltIn  # noqa: PLC0415 (optional: precedent[embedded])
-    except ImportError:
+    built_in_client = _built_in_client()
+    if built_in_client is None:
         return FalkorDB.from_url(DEFAULT_URL)
     path.parent.mkdir(parents=True, exist_ok=True)
     # No retries: the server is a local file socket, so a dropped connection means it stopped. With retries, stopping
     # it at exit (SHUTDOWN closes the socket) took ~2.5 s of back-off in every process, so every hook call was slow.
-    return BuiltIn(str(path), retry=Retry(NoBackoff(), 0))
+    return built_in_client(str(path), retry=Retry(NoBackoff(), 0))
+
+
+def uses_built_in(url: str | None) -> bool:
+    """Whether `connect` uses the built-in database: no server named, and precedent[embedded] installed."""
+    return not url and _built_in_client() is not None
+
+
+def _built_in_client() -> type[FalkorDB] | None:
+    try:
+        from redislite.falkordb_client import FalkorDB as BuiltIn  # noqa: PLC0415 (optional: precedent[embedded])
+    except ImportError:
+        return None
+    return BuiltIn
 
 
 # The properties we look nodes up by (docs/spec.md §4), with the statement that indexes each one.
@@ -193,7 +205,7 @@ MATCH (d:Decision)-[a:APPLIES_TO]->(s:Scope)
 WHERE a.invalid_at IS NULL
 OPTIONAL MATCH (d)-[:CITES]->(doc:Source)
 RETURN d.id, d.title, d.status, d.tier, d.confirmed, d.needs_review, s.kind, s.value, a.polarity, a.quote,
-       a.extracted, a.unless, collect(DISTINCT doc.url), d.decided_at
+       a.extracted, a.unless, collect(DISTINCT doc.url), d.decided_at, d.path
 """
 # Every "replaces" link a file still states, with what decides each side's authority. Which ones take effect is
 # decided in pure code (core/authority.py, ADR0019), never here.
@@ -241,6 +253,7 @@ def _rule(row: list) -> Rule:
         unless,
         urls,
         decided_at,
+        path,
     ) = row
     scope = {
         "kind": kind,
@@ -259,7 +272,8 @@ def _rule(row: list) -> Rule:
             "confirmed": confirmed,
             "needs_review": bool(needs_review),
             "scope": scope,
-            "source": min(urls, default=None),
+            # The file inside its repository when known (ADR0021), so no checkout path shows or changes the bundle.
+            "source": path or min(urls, default=None),
             "decided_at": decided_at or None,
         }
     )

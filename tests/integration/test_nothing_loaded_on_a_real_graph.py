@@ -18,6 +18,7 @@ from precedent.core.diff import changes
 from precedent.core.errors import NothingLoadedError
 from precedent.core.model import Scope
 from precedent.surfaces.cli import main
+from same_verdict import checked, saved
 
 pytestmark = pytest.mark.integration
 
@@ -37,10 +38,10 @@ def project(root: Path) -> Path:
 
 
 ASKS = {  # each ask, reduced to its answer
-    "check": lambda graph, root: service.preflight(graph, changes(DIFF)).verdict,
-    "check-nothing-changed": lambda graph, root: service.preflight(graph, []).verdict,
-    "why": lambda graph, root: service.why(graph, "axios"),
-    "doctor": lambda graph, root: service.doctor(graph, str(project(root)))[1],
+    "check": lambda graph, root: checked(graph, changes(DIFF)).verdict,
+    "check-nothing-changed": lambda graph, root: checked(graph, []).verdict,
+    "why": lambda graph, root: service.why(saved(graph), "axios"),
+    "doctor": lambda graph, root: service.doctor(saved(graph), str(project(root)))[1],
 }
 NOTHING_TO_CHECK = {"check": "CLEAR", "check-nothing-changed": "CLEAR", "why": {}, "doctor": []}
 
@@ -66,7 +67,7 @@ def test_an_org_whose_decisions_all_stopped_counting_is_still_loaded(graph, tmp_
     service.ingest(graph, str(tmp_path), "team")
     retire_gone(graph, ["team/ADR0001"])  # what a load does once the file is proven deleted
 
-    assert service.preflight(graph, changes(DIFF)).verdict == "CLEAR"
+    assert checked(graph, changes(DIFF)).verdict == "CLEAR"
 
 
 IDLE = [

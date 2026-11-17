@@ -12,6 +12,7 @@ from precedent import service
 from precedent.adapters.falkor import rules, save_decision
 from precedent.core.diff import Change
 from precedent.core.model import DecisionRecord
+from same_verdict import checked, saved
 
 pytestmark = pytest.mark.integration
 
@@ -36,7 +37,7 @@ def load(graph, root: Path, status: str, *, link: bool = True) -> None:
 
 
 def verdict(graph) -> str:
-    return service.preflight(graph, ADDS_AXIOS).verdict
+    return checked(graph, ADDS_AXIOS).verdict
 
 
 @pytest.mark.parametrize(
@@ -55,7 +56,7 @@ def test_a_decision_whose_file_does_not_say_accepted_cannot_lift_the_block(graph
     load(graph, tmp_path, status)
 
     assert verdict(graph) == "BLOCK"
-    [(_, standings)] = service.why(graph, "axios").items()
+    [(_, standings)] = service.why(saved(graph), "axios").items()
     old = next(s for s in standings if s.rule.decision == "team/ADR0007")
     assert (old.outcome, old.rule.not_in_effect) == ("wins", (f"team/ADR0042 would replace this, but {why}",))
 
@@ -64,7 +65,7 @@ def test_an_accepted_replacement_lifts_the_block(graph, tmp_path):
     load(graph, tmp_path, "Accepted")
 
     assert verdict(graph) == "CLEAR"
-    [(_, standings)] = service.why(graph, "axios").items()
+    [(_, standings)] = service.why(saved(graph), "axios").items()
     assert [(s.rule.decision, s.outcome) for s in standings] == [("team/ADR0042", "wins"), ("team/ADR0007", "replaced")]
 
 
@@ -77,7 +78,7 @@ def test_the_block_follows_the_proposal_through_its_life(graph, tmp_path):
     assert verdict(graph) == "CLEAR"
 
     load(graph, tmp_path, "Accepted", link=False)
-    report = service.preflight(graph, ADDS_AXIOS)
+    report = checked(graph, ADDS_AXIOS)
     assert report.verdict == "BLOCK"  # both in force and they disagree: the reviewed avoid holds (ADR0018)
     assert [f.kind for f in report.findings] == ["disagreement"]
 
@@ -142,14 +143,14 @@ def test_the_order_files_are_saved_in_does_not_matter(graph, newer_first):
     for r in (proposal, old) if newer_first else (old, proposal):
         save_decision(graph, r)
 
-    assert service.preflight(graph, ADDS_AXIOS).verdict == "BLOCK"
+    assert checked(graph, ADDS_AXIOS).verdict == "BLOCK"
 
 
 def test_two_accepted_decisions_that_claim_to_replace_each_other_both_stay(graph):
     save_decision(graph, record("0007", "accepted", ("team/ADR0042",)))
     save_decision(graph, record("0042", "accepted", ("team/ADR0007",)))
 
-    report = service.preflight(graph, ADDS_AXIOS)
+    report = checked(graph, ADDS_AXIOS)
 
     assert report.verdict == "BLOCK"
     assert [f.kind for f in report.findings] == ["disagreement"]

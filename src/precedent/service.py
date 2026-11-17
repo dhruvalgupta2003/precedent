@@ -1,13 +1,17 @@
 """The Precedent facade every surface calls (ADR0009)."""
 
+import json
 import os
 from collections import Counter
 from collections.abc import Callable
+from datetime import UTC, datetime
+from importlib import metadata
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from falkordb import Graph
 
+from precedent.adapters import bundle_file
 from precedent.adapters.falkor import (
     connect,
     ensure_schema,
@@ -20,12 +24,14 @@ from precedent.adapters.falkor import (
     retire_gone,
     rules,
     save_decision,
+    uses_built_in,
 )
 from precedent.connectors import adr, folder
 from precedent.core.authority import Rule, Standing, resolve
+from precedent.core.bundle import Bundle, Stamp, build, dump, parse
 from precedent.core.diff import Change, facts
 from precedent.core.doctor import StaleLine, mentions, stale_lines
-from precedent.core.errors import ExtractionError, KnowledgeError, NothingLoadedError
+from precedent.core.errors import BundleError, ExtractionError, KnowledgeError, NothingLoadedError
 from precedent.core.grounding import grounded, keep_grounded, talks_to_a_reader, without_planted
 from precedent.core.model import DecisionRecord, Origin, Scope
 from precedent.core.origin import Earlier, Proof, Reach, clashes, covers, repo_name, retired, taken_without_origin
@@ -35,6 +41,17 @@ if TYPE_CHECKING:
     from precedent.adapters.llm import Kind
 
 ScopeReader = Callable[[str], list[Scope]]
+
+
+def installed_version() -> str:
+    """This Precedent's release, plus its commit when installed from git: an install from main between releases may
+    rank rules differently, so it is another version."""
+    found = metadata.distribution("precedent")
+    commit = json.loads(found.read_text("direct_url.json") or "{}").get("vcs_info", {}).get("commit_id")
+    return f"{found.version}+{commit[:12]}" if commit else found.version
+
+
+VERSION = installed_version()
 
 
 class Readers(NamedTuple):
@@ -88,6 +105,72 @@ def ingest(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> Ingest
     counts["idle"] = sum(1 for d in decisions if d.status == "accepted" and not d.scopes)
     unused = tuple(p.relative_to(root).as_posix() for p in plan.misplaced)
     return IngestReport(**counts, unused=unused)
+
+
+def load(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> IngestReport:  # noqa: B008 (immutable)
+    """`ingest`, then save the bundle checks read (ADR0025), one load of the org at a time. The old bundle goes
+    first, so a load that fails or is killed half way leaves none, and checks read the database until a load ends.
+    With a server there is nothing to save."""
+    if not _saves_bundles():
+        return ingest(graph, root, org, ai)
+    path = bundle_path(graph.name)
+    with bundle_file.locked(path):
+        path.unlink(missing_ok=True)
+        report = ingest(graph, root, org, ai)
+        bundle = compile_bundle(graph, Stamp(built_at=datetime.now(UTC), version=VERSION))
+        if bundle.loaded:  # an org with no decisions (a misspelled --org) gets no file
+            bundle_file.write(path, dump(bundle))
+    return report
+
+
+def read_bundle(org: str) -> Bundle:
+    """What a check reads: the bundle the last load saved, so no database starts. One it can't trust (none saved
+    yet, damaged, or saved by another version) is built from the database for this check; only a load saves. With
+    a server nothing is saved: a teammate's load changes what is in force."""
+    return (_saved(org) if _saves_bundles() else None) or compile_bundle(open_graph(org))
+
+
+def compile_bundle(graph: Graph, stamp: Stamp | None = None) -> Bundle:
+    """The org's rules, each told what replaces it. `loaded` tells an org with no decisions (an error, #66) from one
+    whose decisions check nothing yet."""
+    found = rules(graph)
+    return build(graph.name, found, loaded=bool(found) or has_decisions(graph), stamp=stamp)
+
+
+class Summary(NamedTuple):
+    rules: int
+    decisions: int  # those with a rule; a decision with nothing to check isn't in the bundle
+    can_block: int
+    saved_at: datetime | None  # None: built from the database for this check
+
+
+def summary(bundle: Bundle) -> Summary:
+    """`precedent status`: enough to see that the load you expect is the one a check reads."""
+    found = _rules(bundle)
+    saved_at = bundle.stamp.built_at if bundle.stamp else None
+    return Summary(len(found), len({r.decision for r in found}), sum(r.may_block for r in found), saved_at)
+
+
+def bundle_path(org: str) -> Path:
+    """Beside the built-in database's file and named after it, so two databases never share a bundle, and one
+    database named two ways (a link) never has two."""
+    db = database_path().resolve()
+    return db.with_name(f"{db.name}.bundles") / f"{org}.json"
+
+
+def _saves_bundles() -> bool:
+    return uses_built_in(os.environ.get("FALKORDB_URL"))
+
+
+def _saved(org: str) -> Bundle | None:
+    """The saved bundle if it can be trusted: whole, for this org, and saved by this version, because its rules are
+    saved already ranked and a fix to the ranking must not wait for the next load."""
+    raw = bundle_file.read(bundle_path(org))
+    try:
+        found = parse(raw) if raw is not None else None
+    except BundleError:
+        return None
+    return found if found and found.org == org and found.stamp and found.stamp.version == VERSION else None
 
 
 def _read_all(adr_folders: list[Path], root: Path, org: str, source: str) -> list[DecisionRecord]:
@@ -279,24 +362,23 @@ def _lines(root: Path, path: str) -> tuple[str, ...]:
 ORDER = {"wins": 0, "disputed": 0, "outranked": 1, "replaced": 2, "retired": 3}
 
 
-def why(graph: Graph, name: str) -> dict[tuple[str, str], list[Standing]]:
+def why(bundle: Bundle, name: str) -> dict[tuple[str, str], list[Standing]]:
     """Every decision about `name` (a package, a symbol, a path…), the one that wins first, each with its reason."""
-    ranked = resolve(r for r in _rules(graph) if r.scope.value.lower() == name.lower())
+    ranked = resolve(r for r in _rules(bundle) if r.scope.value.lower() == name.lower())
     return {
         thing: sorted(standings, key=lambda s: (ORDER[s.outcome], s.rule.decision))
         for thing, standings in ranked.items()
     }
 
 
-def _rules(graph: Graph) -> list[Rule]:
+def _rules(bundle: Bundle) -> tuple[Rule, ...]:
     """Every rule in the org. An org with no decisions at all is an error, never an empty set that passes: it is
     usually a misspelled org, or a load that hasn't run (#66)."""
-    found = rules(graph)
-    if not found and not has_decisions(graph):
+    if not bundle.loaded:
         raise NothingLoadedError(
-            f"No decisions are loaded in org {graph.name!r}: load them first, or check the org name."
+            f"No decisions are loaded in org {bundle.org!r}: load them first, or check the org name."
         )
-    return found
+    return bundle.rules
 
 
 def working_changes(cwd: Path) -> str:
@@ -309,9 +391,9 @@ def project_root(cwd: Path) -> Path:
     return folder.top(cwd) or cwd
 
 
-def preflight(graph: Graph, changes: list[Change]) -> Report:
-    """Check a change against every live decision in the org's graph (docs/spec.md §7)."""
-    return check(facts(changes), _rules(graph))
+def preflight(bundle: Bundle, changes: list[Change]) -> Report:
+    """Check a change against every live decision in the org (docs/spec.md §7)."""
+    return check(facts(changes), _rules(bundle))
 
 
 def readers(model: str | None = None) -> Readers:
@@ -347,11 +429,11 @@ INSTRUCTION_FILES = (
 )
 
 
-def doctor(graph: Graph, project: str, read_stances: ScopeReader | None = None) -> tuple[list[Path], list[StaleLine]]:
+def doctor(bundle: Bundle, project: str, read_stances: ScopeReader | None = None) -> tuple[list[Path], list[StaleLine]]:
     """Instruction-file lines in a project that contradict a live decision (scenario R1)."""
     root = Path(project)
     files = sorted({p for pattern in INSTRUCTION_FILES for p in root.glob(pattern) if _instruction_file(p, root)})
-    live = _rules(graph)
+    live = list(_rules(bundle))
     found: list[StaleLine] = []
     for path in files:
         text, name = path.read_text(errors="replace"), str(path.relative_to(root))

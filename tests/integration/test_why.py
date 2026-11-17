@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from precedent import service
+from same_verdict import saved
 
 pytestmark = pytest.mark.integration
 
@@ -28,7 +29,7 @@ def decisions(root: Path) -> str:
 def test_why_names_the_decision_that_wins_first_and_says_why_the_old_one_lost(graph, tmp_path):
     service.ingest(graph, decisions(tmp_path), "team")
 
-    [(thing, standings)] = service.why(graph, "moment").items()
+    [(thing, standings)] = service.why(saved(graph), "moment").items()
 
     assert thing == ("package", "moment")
     assert [(s.rule.decision, s.outcome, s.reason) for s in standings] == [
@@ -41,4 +42,4 @@ def test_why_names_the_decision_that_wins_first_and_says_why_the_old_one_lost(gr
 def test_why_about_something_no_decision_covers_is_empty(graph, tmp_path):
     service.ingest(graph, decisions(tmp_path), "team")
 
-    assert service.why(graph, "graphql") == {}
+    assert service.why(saved(graph), "graphql") == {}

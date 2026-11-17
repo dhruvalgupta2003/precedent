@@ -65,31 +65,36 @@ def backstage() -> Graph:
 
 
 def folder_verdict(loads: list[dict[str, str]], diff: str, ai: list[dict] | None = None) -> str:
-    """Load a small folder of decisions into its own graph, once per file set (the folder holds exactly that set
-    each time, committed in a git repository so a deleted file can be proven deleted), check a diff against it,
-    then delete the graph. `ai` replays what a model answered for every note and document, so the checks on AI
-    findings run on the answers real models gave, at no cost."""
-    readers = service.Readers(adrs=replay(ai), docs=replay(ai)) if ai else service.Readers()
+    """Load a small folder of decisions into its own graph, check a diff against it, then delete the graph. `ai`
+    replays what a model answered for every note and document, so the checks on AI findings run on the answers real
+    models gave, at no cost."""
     graph = fresh(FOLDER_GRAPH)
     try:
         with tempfile.TemporaryDirectory() as root:
-            git(root, "init", "-q")
-            git(root, "remote", "add", "origin", "https://github.com/precedent-evals/fixture")
-            for files in loads:
-                for old in Path(root).iterdir():
-                    if old.name != ".git":
-                        old.unlink()
-                for name, text in files.items():
-                    (Path(root) / name).write_text(text)
-                git(root, "add", "-A")
-                git(root, "commit", "-q", "--allow-empty", "-m", "decisions")
-                service.ingest(graph, root, "team", readers)
-        return service.preflight(graph, changes(diff)).verdict
+            load_folder(graph, Path(root), loads, ai)
+        return service.preflight(service.compile_bundle(graph), changes(diff)).verdict
     except KnowledgeError as error:
         return f"REFUSED: {error}"  # the load stopped, and says why
     finally:
         if FOLDER_GRAPH in database().list_graphs():
             graph.delete()
+
+
+def load_folder(graph: Graph, root: Path, loads: list[dict[str, str]], ai: list[dict] | None = None) -> None:
+    """Load the folder once per file set: it holds exactly that set each time, committed in a git repository so a
+    deleted file can be proven deleted."""
+    readers = service.Readers(adrs=replay(ai), docs=replay(ai)) if ai else service.Readers()
+    git(str(root), "init", "-q")
+    git(str(root), "remote", "add", "origin", "https://github.com/precedent-evals/fixture")
+    for files in loads:
+        for old in root.iterdir():
+            if old.name != ".git":
+                old.unlink()
+        for name, text in files.items():
+            (root / name).write_text(text)
+        git(str(root), "add", "-A")
+        git(str(root), "commit", "-q", "--allow-empty", "-m", "decisions")
+        service.ingest(graph, str(root), "team", readers)
 
 
 def replay(answer: list[dict]) -> ScopeReader:
@@ -110,7 +115,7 @@ def score_preflight(case: Case) -> tuple[bool, Any]:
         raise NotImplementedError  # captures, KEPs and plan text aren't built yet
     files = case["input"].get("files", {})  # each file as it is on disk (ADR0016)
     found = [c._replace(context=tuple(files.get(c.path, "").splitlines())) for c in changes(case["input"]["diff"])]
-    report = service.preflight(backstage(), found)
+    report = service.preflight(service.compile_bundle(backstage()), found)
     decisions = {f.decision for f in report.findings}
     passed = report.verdict == case["expected"]["verdict"] and set(case["expected"]["decisions"]) <= decisions
     return passed, report.verdict
@@ -157,7 +162,7 @@ def score_safety(case: Case) -> tuple[bool, Any]:
         got = folder_verdict(given.get("loads") or [given["files"]], given["diff"], given.get("ai"))
         return got.startswith(expected["verdict"]), got  # a refusal must also give the expected reason
     if "diff" in given:
-        report = service.preflight(backstage(), changes(given["diff"]))
+        report = service.preflight(service.compile_bundle(backstage()), changes(given["diff"]))
         return report.verdict == expected["verdict"], report.verdict
     if "filename" not in given:
         raise NotImplementedError  # PR text and transcripts arrive with capture

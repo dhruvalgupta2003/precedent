@@ -67,8 +67,8 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def checked(monkeypatch: pytest.MonkeyPatch) -> list:
     """What `check` hands to the pre-flight, with the database out of the way."""
     seen: list = []
-    monkeypatch.setattr("precedent.surfaces.cli._graph", lambda org: None)
-    monkeypatch.setattr("precedent.service.preflight", lambda graph, changes: seen.extend(changes) or CLEAR)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
+    monkeypatch.setattr("precedent.service.preflight", lambda bundle, changes: seen.extend(changes) or CLEAR)
     return seen
 
 
@@ -140,6 +140,7 @@ COMMANDS = {
     "load": lambda tmp: ["load", str(tmp), "--no-ai"],
     "check": lambda tmp: ["check", "--diff", str(tmp / "change.diff")],
     "why": lambda tmp: ["why", "axios"],
+    "status": lambda tmp: ["status"],
     "doctor": lambda tmp: ["doctor", "--no-ai", "--project", str(tmp)],
 }
 
@@ -158,7 +159,8 @@ FAILURES = list(itertools.product(COMMANDS, ERRORS))
 def test_every_error_exits_3_never_a_verdict_code(tmp_path, monkeypatch, capsys, case):
     command, error = case
     (tmp_path / "change.diff").write_text(PIPED_TEXT)
-    monkeypatch.setattr("precedent.surfaces.cli._graph", failing(ERRORS[error]))
+    monkeypatch.setattr("precedent.surfaces.cli._graph", failing(ERRORS[error]))  # load
+    monkeypatch.setattr("precedent.service.read_bundle", failing(ERRORS[error]))  # check, why, doctor, status
 
     assert main(COMMANDS[command](tmp_path)) == 3
     assert capsys.readouterr().err.strip()  # and says what went wrong
@@ -169,6 +171,7 @@ def test_a_bug_inside_precedent_exits_3_and_shows_where(tmp_path, monkeypatch, c
     """Python's own exit code for a crash is 1, which reads as WARN; a crash must fail CI instead."""
     (tmp_path / "change.diff").write_text(PIPED_TEXT)
     monkeypatch.setattr("precedent.surfaces.cli._graph", failing(RuntimeError("a bug")))
+    monkeypatch.setattr("precedent.service.read_bundle", failing(RuntimeError("a bug")))
 
     assert main(COMMANDS[command](tmp_path)) == 3
     err = capsys.readouterr().err
@@ -214,7 +217,7 @@ EVENT = {"tool_name": "Write", "tool_input": {"file_path": "/r/a.ts", "content":
 @pytest.mark.parametrize("error", ERRORS)
 def test_the_hook_still_fails_open_on_every_error(monkeypatch, capsys, error):
     """H3: Precedent's own errors never block an agent; the hook answers nothing and exits 0."""
-    monkeypatch.setattr("precedent.surfaces.cli._graph", failing(ERRORS[error]))
+    monkeypatch.setattr("precedent.service.read_bundle", failing(ERRORS[error]))
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(EVENT)))
 
     assert main(["check", "--hook"]) == 0
@@ -250,7 +253,7 @@ LOAD_LINES = [
 @pytest.mark.parametrize(("ingested", "line"), LOAD_LINES, ids=["one-yaml", "two-yaml", "one-idle", "two-idle"])
 def test_a_load_says_what_it_could_not_use(monkeypatch, capsys, ingested, line):
     monkeypatch.setattr("precedent.surfaces.cli._graph", lambda org: None)
-    monkeypatch.setattr("precedent.service.ingest", lambda *_: ingested)
+    monkeypatch.setattr("precedent.service.load", lambda *_: ingested)
 
     assert main(["load", ".", "--no-ai"]) == 0
     assert line in capsys.readouterr().out
@@ -258,7 +261,7 @@ def test_a_load_says_what_it_could_not_use(monkeypatch, capsys, ingested, line):
 
 def test_a_load_with_nothing_unused_says_nothing_about_it(monkeypatch, capsys):
     monkeypatch.setattr("precedent.surfaces.cli._graph", lambda org: None)
-    monkeypatch.setattr("precedent.service.ingest", lambda *_: IngestReport(written=1))
+    monkeypatch.setattr("precedent.service.load", lambda *_: IngestReport(written=1))
 
     assert main(["load", ".", "--no-ai"]) == 0
     out = capsys.readouterr().out
@@ -270,7 +273,7 @@ def test_a_load_with_nothing_unused_says_nothing_about_it(monkeypatch, capsys):
 def test_the_idle_hint_suggests_an_ai_only_when_none_was_used(monkeypatch, capsys, argv, suggests_ai):
     monkeypatch.setattr("precedent.surfaces.cli._graph", lambda org: None)
     monkeypatch.setattr("precedent.service.readers", lambda model=None: Readers(adrs=lambda text: []))
-    monkeypatch.setattr("precedent.service.ingest", lambda *_: IngestReport(written=1, idle=1))
+    monkeypatch.setattr("precedent.service.load", lambda *_: IngestReport(written=1, idle=1))
 
     assert main(["load", ".", *argv]) == 0
     out = capsys.readouterr().out

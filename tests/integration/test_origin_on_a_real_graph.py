@@ -15,6 +15,7 @@ from precedent.adapters.falkor import rules, save_decision
 from precedent.core.diff import Change
 from precedent.core.errors import KnowledgeError
 from precedent.core.model import DecisionRecord
+from same_verdict import checked
 
 pytestmark = pytest.mark.integration
 
@@ -68,7 +69,7 @@ def decisions(folder: Path, files: dict[str, str]) -> None:
 
 
 def verdict(graph) -> str:
-    return service.preflight(graph, ADDS_AXIOS).verdict
+    return checked(graph, ADDS_AXIOS).verdict
 
 
 def live(graph) -> set[str]:

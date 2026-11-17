@@ -116,7 +116,7 @@ uv run precedent check --diff examples/changes/adds-node-fetch-native.diff
 
 ## When you're done
 
-Nothing keeps running in the background. The demo's decisions are kept in a small file
-(`~/.local/share/precedent/precedent.db`) that you can delete.
+Nothing keeps running in the background. The demo's decisions are kept in a small folder
+(`~/.local/share/precedent`) that you can delete.
 
 **Next:** [set it up for your team](setup.md).

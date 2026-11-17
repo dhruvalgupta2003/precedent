@@ -12,6 +12,7 @@ import pytest
 from precedent import service
 from precedent.core.diff import changes
 from precedent.core.model import Scope
+from same_verdict import checked, saved
 
 pytestmark = pytest.mark.integration
 
@@ -37,7 +38,7 @@ def reported(text: str) -> list[Scope]:
 
 
 def verdict(graph, package: str) -> str:
-    return service.preflight(graph, changes(f"+++ b/a.ts\n+import x from '{package}';\n")).verdict
+    return checked(graph, changes(f"+++ b/a.ts\n+import x from '{package}';\n")).verdict
 
 
 def load(graph, tmp_path: Path, where: str, body: str) -> service.IngestReport:
@@ -55,7 +56,7 @@ def test_in_a_clean_text_only_the_rule_the_quote_names_reaches_the_graph(graph, 
     report = load(graph, tmp_path, where, CLEAN)
 
     assert (report.scopes, report.dropped, report.planted) == (1, 2, 0)  # moment: not named; react: not in the text
-    assert service.why(graph, "moment") == {}
+    assert service.why(saved(graph), "moment") == {}
     assert (verdict(graph, "moment"), verdict(graph, "react"), verdict(graph, "lodash")) == ("CLEAR", "CLEAR", "WARN")
 
 
@@ -64,7 +65,7 @@ def test_in_a_text_that_talks_to_an_ai_nothing_the_ai_found_reaches_the_graph(gr
     report = load(graph, tmp_path, where, BODY)
 
     assert (report.scopes, report.dropped, report.planted) == (0, 1, 2)  # lodash and react: planted text
-    assert service.why(graph, "react") == {}
+    assert service.why(saved(graph), "react") == {}
     assert (verdict(graph, "moment"), verdict(graph, "react"), verdict(graph, "lodash")) == ("CLEAR", "CLEAR", "CLEAR")
 
 
@@ -82,7 +83,7 @@ def test_doctor_still_reads_instruction_files_that_talk_to_an_ai(graph, tmp_path
     (tmp_path / "CLAUDE.md").write_text(f"# Rules\n\n{line}\n")
     stance = Scope(kind="package", value="axios", polarity="prefer", quote=line, extracted=True)
 
-    _, stale = service.doctor(graph, str(tmp_path), lambda text: [stance])
+    _, stale = service.doctor(saved(graph), str(tmp_path), lambda text: [stance])
 
     assert [s.quote for s in stale] == [line]
 
@@ -107,4 +108,5 @@ def test_a_planted_finding_loaded_by_an_older_version_is_retired_on_the_next_loa
     )
 
     assert verdict(graph, "react") == "CLEAR"
-    assert {s.outcome for s in service.why(graph, "react")[("package", "react")]} == {"retired"}  # kept as history
+    standings = service.why(saved(graph), "react")[("package", "react")]
+    assert {s.outcome for s in standings} == {"retired"}  # kept as history
