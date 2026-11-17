@@ -15,6 +15,12 @@ from safety import safe_graph_name
 models.ALLOW_MODEL_REQUESTS = False
 
 
+@pytest.fixture(autouse=True)
+def own_data_folder(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test reads or writes the user's own database or saved bundles: each test gets a data folder of its own."""
+    monkeypatch.setenv("PRECEDENT_DB", str(tmp_path_factory.mktemp("data") / "precedent.db"))
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     """Async tests run on asyncio, the loop uvicorn uses."""

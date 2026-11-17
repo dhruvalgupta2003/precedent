@@ -35,6 +35,7 @@ All of them:
 | [0022](0022-a-check-that-could-not-look-never-passes.md) | A check that couldn't look never passes |
 | [0023](0023-an-ai-finding-must-name-what-it-quotes.md) | An AI finding must name what it quotes, and never obey the text |
 | [0024](0024-checks-warn-promotions-block.md) | Checks warn, promotions block, and a file's home is its folder |
+| [0025](0025-a-check-reads-one-bundle.md) | A check reads one bundle, never the database |
 
 The full technical design is in [`docs/spec.md`](https://github.com/dhruvalgupta2003/precedent/blob/main/docs/spec.md)
 on GitHub.

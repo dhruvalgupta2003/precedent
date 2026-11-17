@@ -23,6 +23,9 @@ Notes that didn't change are skipped. It also says what it could not use: a `pre
 same folder as any decision note (so it was not read), and accepted decisions with nothing to check yet. Ends with
 `0` when done, `3` on an error (for example a mistake in `precedent.yaml`).
 
+It also saves what `precedent check` reads ([`precedent status`](#precedent-status) shows it). Two loads of one
+org never run at once: the second waits up to 30 seconds, then stops and says why.
+
 ## `precedent check`
 
 Checks a change against the decisions that still count.
@@ -58,6 +61,22 @@ decision as *not in effect*, with the reason.
 | `--org NAME` | which set of decisions to use (default: `team`) |
 
 Ends with `0` when a decision is about it, `1` when none is, `3` when no decisions are loaded at all.
+
+## `precedent status`
+
+Shows what a check reads: how many rules, from how many decisions, how many can stop a change, and when the last
+load saved them.
+
+| Option | What it does |
+|---|---|
+| `--org NAME` | which set of decisions to use (default: `team`) |
+
+With the built-in database, each load saves the rules a check needs in one file next to the database, so a check
+doesn't have to start the database. That file is only a copy: if it is missing, from another version of
+Precedent, or damaged, the next check builds it again from the database. With a database server
+(`FALKORDB_URL`), nothing is saved: every check reads the server, so a teammate's load counts straight away.
+
+Ends with `0`, or `3` when no decisions are loaded under that `--org`.
 
 ## `precedent doctor`
 

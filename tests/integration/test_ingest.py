@@ -6,6 +6,7 @@ from precedent import service
 from precedent.core.diff import changes
 from precedent.core.errors import ExtractionError, NothingLoadedError
 from precedent.core.model import Scope
+from same_verdict import checked
 
 pytestmark = pytest.mark.integration
 
@@ -103,7 +104,7 @@ def write(root: Path, files: dict[str, str]) -> str:
 
 
 def verdict(graph, diff: str = AXIOS_CHANGE) -> str:
-    return service.preflight(graph, changes(diff)).verdict
+    return checked(graph, changes(diff)).verdict
 
 
 def test_any_folder_loads_its_adrs_and_the_marked_decisions_in_other_docs(graph, tmp_path):

@@ -3,6 +3,7 @@ import pytest
 from precedent import service
 from precedent.adapters.falkor import save_decision
 from precedent.core.model import DecisionRecord, Scope
+from same_verdict import saved
 
 pytestmark = pytest.mark.integration
 
@@ -45,7 +46,7 @@ def test_doctor_finds_the_stale_line_in_a_projects_instruction_files(graph, tmp_
             )
         ]
 
-    files, found = service.doctor(graph, str(tmp_path), read_stances)
+    files, found = service.doctor(saved(graph), str(tmp_path), read_stances)
 
     assert [f.name for f in files] == ["CLAUDE.md"]
     assert [(s.file, s.line, s.decision) for s in found] == [("CLAUDE.md", 3, "acme/ADR014")]

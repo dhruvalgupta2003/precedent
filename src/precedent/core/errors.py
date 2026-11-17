@@ -21,3 +21,7 @@ class NothingLoadedError(PrecedentError):
 
     It is an error, never CLEAR: a check that looked at nothing must not pass (#66).
     """
+
+
+class BundleError(PrecedentError):
+    """A saved bundle can't be read: damaged, or saved by another version. It is never used; it is built again."""

@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import traceback
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import NoReturn
 from urllib.parse import urlsplit, urlunsplit
@@ -63,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
 def run_ingest(args: argparse.Namespace) -> int:
     ai = service.Readers() if args.no_ai else service.readers(_model(args))
     prefix = f"{args.org}/{args.source}" if args.source else args.org
-    report = service.ingest(_graph(args.org), args.folder, prefix, ai)
+    report = service.load(_graph(args.org), args.folder, prefix, ai)
     total = report.written + report.unchanged
     news = f"{report.written} new or changed, {report.unchanged} already up to date"
     print(f"Loaded {total} decision{'' if total == 1 else 's'} into {args.org!r}: {news}.")
@@ -105,7 +106,7 @@ def run_check(args: argparse.Namespace) -> int:
     if args.hook:
         return _hook(args.org)
     found = service.with_files(changes(_change_text(args.diff)), service.project_root(Path.cwd()))
-    report = service.preflight(_graph(args.org), found)
+    report = service.preflight(_checks(args.org), found)
     print(report.model_dump_json(indent=2) if args.format == "json" else describe(report))
     return EXIT[report.verdict]
 
@@ -149,7 +150,7 @@ def run_hooks_install(args: argparse.Namespace) -> int:
 
 def run_why(args: argparse.Namespace) -> int:
     """Which decision about something wins, and why (ADR0018). Ends with 1 when no decision is about it."""
-    ranked = service.why(_graph(args.org), args.name)
+    ranked = service.why(_checks(args.org), args.name)
     print(json.dumps(as_json(args.name, ranked), indent=2) if args.format == "json" else explain(args.name, ranked))
     return 0 if ranked else 1
 
@@ -157,7 +158,7 @@ def run_why(args: argparse.Namespace) -> int:
 def run_doctor(args: argparse.Namespace) -> int:
     """Instruction-file lines (CLAUDE.md, AGENTS.md, …) that contradict a live decision. Exit 1 if any (CI)."""
     reader = None if args.no_ai else service.default_scope_reader("instructions", _model(args))
-    files, found = service.doctor(_graph(args.org), args.project, reader)
+    files, found = service.doctor(_checks(args.org), args.project, reader)
     for stale in found:
         print(f'{stale.message}\n    the file says: "{" ".join(stale.quote.split())}"')
         if stale.decision_quote:
@@ -165,6 +166,28 @@ def run_doctor(args: argparse.Namespace) -> int:
     if not found:
         print(f"No stale lines in {len(files)} instruction file{'s' if len(files) != 1 else ''}.")
     return 1 if found else 0
+
+
+def run_status(args: argparse.Namespace) -> int:
+    """What a check reads for the org: how many rules, how many can stop a change, and how fresh they are."""
+    now = service.summary(_checks(args.org))
+    print(
+        f"{_count(now.rules, 'rule')} from {_count(now.decisions, 'decision')} in org {args.org!r}; "
+        f"{now.can_block} can stop a change."
+    )
+    if now.stamp.sequence:
+        print(f"Bundle {now.stamp.sequence}, saved {_ago(now.stamp.built_at)} by the last load.")
+    else:
+        print("Read from the database server on every check, so a teammate's load counts at once.")
+    return 0
+
+
+def _ago(then: datetime) -> str:
+    seconds = int((datetime.now(UTC) - then).total_seconds())
+    for size, unit in ((86_400, "day"), (3_600, "hour"), (60, "minute")):
+        if seconds >= size:
+            return f"{_count(seconds // size, unit)} ago"
+    return "just now"
 
 
 def _count(n: int, noun: str) -> str:
@@ -186,7 +209,7 @@ def _hook(org: str) -> int:
         event = json.load(sys.stdin)
         change = change_from_tool(event)
         found = service.with_files([change], Path(event.get("cwd") or ".")) if change else []
-        out = response(service.preflight(_graph(org), found)) if change else None
+        out = response(service.preflight(_checks(org), found)) if change else None
     except Exception as exc:
         print(f"Precedent hook skipped: {exc}", file=sys.stderr)
         return 0
@@ -215,6 +238,9 @@ def _parser() -> argparse.ArgumentParser:
     check.add_argument("--hook", action="store_true", help="read a Claude Code PreToolUse event from stdin")
     check.set_defaults(run=run_check)
     _why_command(commands)
+    status = commands.add_parser("status", help="what a check reads: how many rules, and how fresh")
+    _org_option(status)
+    status.set_defaults(run=run_status)
     doctor = commands.add_parser("doctor", help="find lines in CLAUDE.md/AGENTS.md that contradict live decisions")
     _org_option(doctor)
     doctor.add_argument("--project", default=".", help="the repository to check (default: here)")
@@ -275,3 +301,7 @@ def _shown(url: str) -> str:
 
 def _graph(org: str) -> Graph:
     return service.open_graph(org)
+
+
+def _checks(org: str) -> service.Bundle:
+    return service.checks(org)

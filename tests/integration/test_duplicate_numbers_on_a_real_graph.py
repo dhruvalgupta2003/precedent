@@ -10,6 +10,7 @@ from precedent.connectors import folder
 from precedent.core.diff import Change
 from precedent.core.errors import KnowledgeError
 from precedent.core.model import Scope
+from same_verdict import checked, saved
 
 pytestmark = pytest.mark.integration
 
@@ -30,7 +31,7 @@ def first_load(graph, folder: Path) -> None:
 
 
 def verdict(graph) -> str:
-    return service.preflight(graph, ADDS_AXIOS).verdict
+    return checked(graph, ADDS_AXIOS).verdict
 
 
 @pytest.mark.parametrize("status", ["Rejected", "Proposed", "Deprecated", "Superseded", "Draft", "Accepted"])
@@ -44,7 +45,7 @@ def test_a_second_file_with_the_same_number_cannot_lift_the_block(graph, tmp_pat
         service.ingest(graph, str(tmp_path), "team")
 
     assert verdict(graph) == "BLOCK"  # the graph still holds the last good load
-    [(_, [standing])] = service.why(graph, "axios").items()
+    [(_, [standing])] = service.why(saved(graph), "axios").items()
     assert (standing.rule.decision, standing.rule.status, standing.outcome) == ("team/ADR0007", "accepted", "wins")
 
 

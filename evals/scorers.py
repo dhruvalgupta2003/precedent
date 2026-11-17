@@ -84,7 +84,7 @@ def folder_verdict(loads: list[dict[str, str]], diff: str, ai: list[dict] | None
                 git(root, "add", "-A")
                 git(root, "commit", "-q", "--allow-empty", "-m", "decisions")
                 service.ingest(graph, root, "team", readers)
-        return service.preflight(graph, changes(diff)).verdict
+        return service.preflight(service.compile_bundle(graph), changes(diff)).verdict
     except KnowledgeError as error:
         return f"REFUSED: {error}"  # the load stopped, and says why
     finally:
@@ -110,7 +110,7 @@ def score_preflight(case: Case) -> tuple[bool, Any]:
         raise NotImplementedError  # captures, KEPs and plan text aren't built yet
     files = case["input"].get("files", {})  # each file as it is on disk (ADR0016)
     found = [c._replace(context=tuple(files.get(c.path, "").splitlines())) for c in changes(case["input"]["diff"])]
-    report = service.preflight(backstage(), found)
+    report = service.preflight(service.compile_bundle(backstage()), found)
     decisions = {f.decision for f in report.findings}
     passed = report.verdict == case["expected"]["verdict"] and set(case["expected"]["decisions"]) <= decisions
     return passed, report.verdict
@@ -157,7 +157,7 @@ def score_safety(case: Case) -> tuple[bool, Any]:
         got = folder_verdict(given.get("loads") or [given["files"]], given["diff"], given.get("ai"))
         return got.startswith(expected["verdict"]), got  # a refusal must also give the expected reason
     if "diff" in given:
-        report = service.preflight(backstage(), changes(given["diff"]))
+        report = service.preflight(service.compile_bundle(backstage()), changes(given["diff"]))
         return report.verdict == expected["verdict"], report.verdict
     if "filename" not in given:
         raise NotImplementedError  # PR text and transcripts arrive with capture

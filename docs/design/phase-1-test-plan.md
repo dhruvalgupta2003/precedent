@@ -40,7 +40,7 @@ New: `core/checks.py`, `core/places.py`, `connectors/checks_file.py`. Nothing re
 - A `checks.yaml` loads into checks with the home of its folder; a `promotions.yaml` beside it loads into promotions.
 - A v0.3 `precedent.yaml` loads into the same checks (engine from kind, `where: ["**"]`), and in local mode into a
   promotion for each rule, so it blocks exactly as today.
-- Both formats for one set of decisions: refused by the builder, which sees the whole tree (phase 1b).
+- Both formats for one set of decisions: refused by the builder, which sees the whole tree (phase 1c).
 - A `places.yaml` defines tags and owners. A repo's file can use only its own tags.
 
 **Edge cases** (each a table row: input, expected check or the exact error)
@@ -48,7 +48,7 @@ New: `core/checks.py`, `core/places.py`, `connectors/checks_file.py`. Nothing re
   - Unknown fields are refused, never ignored: a typo like `polartiy` must not drop a stance silently.
 - `id`:
   - the slug pattern, too long, case;
-  - duplicates in one file. Duplicates across files and layers are the builder's (phase 1b).
+  - duplicates in one file. Duplicates across files and layers are the builder's (phase 1c).
 - `decision` that names no note in the folder (as today's `precedent.yaml` check).
 - `quote`:
   - not in the note;
@@ -58,7 +58,7 @@ New: `core/checks.py`, `core/places.py`, `connectors/checks_file.py`. Nothing re
 - `where` and `except`:
   - every rejected form;
   - repository prefixes, which only the org home may use;
-  - a tag's syntax here; whether it has a place inside the home is the builder's (phase 1b);
+  - a tag's syntax here; whether it has a place inside the home is the builder's (phase 1c);
   - globs with unicode, spaces and case.
 - `places.yaml`: a place without an owner, an owner that isn't a team, two places on one folder, an empty tree.
   Cycles can't happen: parents follow from folders. A team's size is checked against GitHub by `precedent/policy`
@@ -101,47 +101,40 @@ New: `core/checks.py`, `core/places.py`, `connectors/checks_file.py`. Nothing re
 - Field order and comments never change the result.
 - Any v0.3 `precedent.yaml` that loads today gives checks that match today's scopes one to one.
 
-## PR 1b: the git-tree builder and the local bundle
+## PR 1b: the local bundle (done, ADR0025)
 
-New: `core/bundle.py` (the model, canonical serialisation and indexes) and `service.build_bundle`. `check`, `why`
-and the hook read the bundle. The graph stays for `why` history and search.
+New: `core/bundle.py` (the model, canonical bytes, hash and index) and `adapters/bundle_file.py` (atomic writes and
+the lock). `precedent load` saves the bundle; `check`, the hook, `why` and `doctor` read it. `precedent status`
+shows it.
 
-**Use cases**
-- `precedent load` builds the bundle from the folder's git tree at HEAD, or from the working tree outside git, and
-  saves it locally.
-- `check` and the hook read the saved bundle.
-- `precedent status` shows its sequence, layers, age and number of checks.
+**What changed from the plan, and why**
+- **The bundle is built from the database at the end of each load, not from the git tree.** The graph holds what
+  several loads built up: other repositories loaded with `--source`, decisions retired only once their deletion is
+  committed, and decisions an AI found. A builder from git alone comes with `checks.yaml` and `promotions.yaml`
+  (1c), which hold all of that as files.
+- **A missing, older or damaged bundle is built again from the database, never refused.** In local mode the
+  database is the source, so rebuilding is always right, and refusing would leave the hook letting every edit
+  through. With no database either, `check` exits 3 as before.
+- **With a server (`FALKORDB_URL`), nothing is saved:** every check builds the bundle from the server, so a
+  teammate's load counts at once.
 
-**What blocks** (pure). Table over checks and promotions:
-- a check alone only warns;
-- a promotion blocks with its snapshot;
-- an edited check under a promotion: the snapshot blocks, and the edited version warns "changed since promotion";
-- a removed check with a promotion left: the promotion still blocks;
-- a promotion before its `from` date warns, after it blocks;
-- `scope: new-code` blocks only new matches;
-- local mode: every `precedent.yaml` rule is promoted.
+**Tested**
+- Determinism (I6): any rule order, locale, umask, LF or CRLF, and checkout path give one hash. A decision file is
+  named by its path in the repo. A document loaded by an absolute path still keeps that path (ADR0025).
+- The hash changes for every field of a rule, and not for the stamp (number and time).
+- Every kind of damage, and another version, is refused by the reader, then rebuilt and still blocks.
+- The number goes up with every load, and survives a damaged bundle and a lost lock file.
+- The index: a table, and a property test that the report equals checking every rule.
+- A failed write leaves the old bundle whole; the file is the owner's alone; a second load waits, then stops with a
+  clear message; a misspelled org leaves no bundle behind.
+- The gate: every preflight, hard and safety eval case, and every integration scenario, gives the same report
+  through the bundle (saved and read back) as through the database alone. Eval scores are unchanged.
 
-**Edge cases**
-- **Determinism (I6):** the same tree gives a byte-identical bundle, whatever the file order, the checkout path, CRLF
-  or LF line endings, umask, or locale.
-- **Content hash:** it changes exactly when a verdict input changes. It ignores comments and whitespace, and changes
-  for any field that matters.
-- **Sequence:** it increases across loads, never goes back, and survives a corrupt saved bundle.
-- **Indexes:**
-  - by package and by path prefix;
-  - `**` checks in a separate always-checked list;
-  - a check that is in no index is never lost (property: union of index lookups ⊇ every check that could match).
-- **Layers:** a repo layer only, or an org layer plus a repo layer (two local trees). The org layer is filtered to
-  checks that can match this repo.
-- **v0.3 verdict equivalence:** every preflight, safety, found and hard eval case, plus every integration test
-  scenario, gives the same verdict through the bundle as through today's graph path. This is the gate for switching.
-
-**Error boundaries**
-- A missing, corrupt or wrong-version saved bundle:
-  - `check` exits 3;
-  - the hook warns once and answers nothing.
-- A partial write is never read: write to a temp file, then rename.
-- Two loads at once: the second waits on a lock, or fails with a clear message, and never mixes the two.
+**Moved to 1c**, which first reads checks and promotions from the tree:
+- what blocks (a check alone warns, a promotion blocks with its snapshot, `from` dates, `scope: new-code`);
+- layers (an org layer plus a repo layer);
+- refusing both formats for one set of decisions, ids repeated across files and layers, and a tag with no place
+  inside its home.
 
 ## PR 1c: the v3 ladder
 
@@ -196,5 +189,5 @@ against the real evaluator. That is about 3,000 rows.
 - Every table and property above is in the suite, `make check` is green, and coverage of core and connectors stays
   at 100%.
 - The v0.3 eval suites score the same through bundles as they do today.
-- Each PR passes the security and design reviews. ADRs: checks v2 and places (1a), bundles from git (1b), the v2
+- Each PR passes the security and design reviews. ADRs: checks v2 and places (1a), the local bundle (1b), the v2
   ladder (1c).

@@ -23,6 +23,11 @@ Click a problem to see the fix.
     without it (`uv tool install git+https://github.com/dhruvalgupta2003/precedent@v0.3.1`) and use a server, as
     [Set it up](setup.md#1-install) explains.
 
+??? failure "It says `another load of org … is running`"
+
+    Two loads of one set of decisions never run at once, so they can't mix. The second waits 30 seconds, then stops.
+    Wait for the first to end (a load with an AI can take a few minutes), then run yours again.
+
 ??? question "`precedent check` always says all good (CLEAR)"
 
     Precedent knows your decisions, but not what to look for in the code. Add a

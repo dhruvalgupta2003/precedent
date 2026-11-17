@@ -1,6 +1,9 @@
+from pathlib import Path
+
 import pytest
 from pydantic_ai import models
 
+from precedent import service
 from safety import safe_graph_name
 
 
@@ -18,3 +21,9 @@ def test_a_real_model_request_is_refused_inside_the_test_suite():
     """If this passes, no test can spend money or depend on a provider being up."""
     with pytest.raises(RuntimeError, match="not allowed"):
         models.check_allow_model_requests()
+
+
+def test_no_test_can_reach_the_users_own_database_or_bundles():
+    """A check that isn't faked falls through to the built-in database: it must be a throwaway one, never theirs."""
+    assert not service.database_path().is_relative_to(Path.home() / ".local")
+    assert not service.bundle_path("team").is_relative_to(Path.home() / ".local")

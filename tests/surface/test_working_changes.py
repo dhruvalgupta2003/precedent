@@ -38,13 +38,13 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     git_in(root)(["git", "init", "-q"])
     monkeypatch.chdir(root)
     monkeypatch.setattr("sys.stdin", io.StringIO(""))  # nothing piped in, no terminal
-    monkeypatch.setattr("precedent.surfaces.cli._graph", lambda org: None)
+    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
     return root
 
 
 def checked(monkeypatch: pytest.MonkeyPatch) -> dict:
     seen: list = []
-    monkeypatch.setattr("precedent.service.preflight", lambda graph, changes: seen.extend(changes) or CLEAR)
+    monkeypatch.setattr("precedent.service.preflight", lambda bundle, changes: seen.extend(changes) or CLEAR)
     return {"seen": seen}
 
 

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from precedent import service
+from same_verdict import saved
 
 pytestmark = pytest.mark.integration
 
@@ -75,7 +76,7 @@ def test_doctor_never_reads_an_instruction_file_that_leads_outside_the_project(g
     service.ingest(graph, str(tmp_path / "adr"), "team")
     seen: list[str] = []
 
-    files, _ = service.doctor(graph, str(project), lambda text: seen.append(text) or [])
+    files, _ = service.doctor(saved(graph), str(project), lambda text: seen.append(text) or [])
 
     assert [f.name for f in files] == ["AGENTS.md"]
     assert LEAK not in "".join(seen)
