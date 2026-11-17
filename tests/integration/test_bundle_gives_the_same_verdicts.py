@@ -46,20 +46,8 @@ def test_every_case_on_backstages_decisions_gives_the_same_report_through_the_bu
 @pytest.mark.parametrize("case", ON_A_FOLDER, ids=[c["id"] for c in ON_A_FOLDER])
 def test_every_case_on_a_folder_gives_the_same_report_through_the_bundle(graph, tmp_path, case):
     given = case["input"]
-    ai = given.get("ai")
-    readers = service.Readers(adrs=scorers.replay(ai), docs=scorers.replay(ai)) if ai else service.Readers()
-    scorers.git(str(tmp_path), "init", "-q")
-    scorers.git(str(tmp_path), "remote", "add", "origin", "https://github.com/precedent-evals/fixture")
     try:
-        for files in given.get("loads") or [given["files"]]:
-            for old in tmp_path.iterdir():
-                if old.name != ".git":
-                    old.unlink()
-            for name, text in files.items():
-                (tmp_path / name).write_text(text)
-            scorers.git(str(tmp_path), "add", "-A")
-            scorers.git(str(tmp_path), "commit", "-q", "--allow-empty", "-m", "decisions")
-            service.ingest(graph, str(tmp_path), "team", readers)
+        scorers.load_folder(graph, tmp_path, given.get("loads") or [given["files"]], given.get("ai"))
     except KnowledgeError:
         return  # the load refused, so there is nothing to check (the eval scores the refusal itself)
     checked(graph, changes(given["diff"]))

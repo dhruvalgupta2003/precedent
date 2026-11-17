@@ -67,7 +67,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def checked(monkeypatch: pytest.MonkeyPatch) -> list:
     """What `check` hands to the pre-flight, with the database out of the way."""
     seen: list = []
-    monkeypatch.setattr("precedent.surfaces.cli._graph", lambda org: None)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
     monkeypatch.setattr("precedent.service.preflight", lambda bundle, changes: seen.extend(changes) or CLEAR)
     return seen
 
@@ -160,7 +160,7 @@ def test_every_error_exits_3_never_a_verdict_code(tmp_path, monkeypatch, capsys,
     command, error = case
     (tmp_path / "change.diff").write_text(PIPED_TEXT)
     monkeypatch.setattr("precedent.surfaces.cli._graph", failing(ERRORS[error]))  # load
-    monkeypatch.setattr("precedent.surfaces.cli._checks", failing(ERRORS[error]))  # check, why, doctor
+    monkeypatch.setattr("precedent.service.read_bundle", failing(ERRORS[error]))  # check, why, doctor, status
 
     assert main(COMMANDS[command](tmp_path)) == 3
     assert capsys.readouterr().err.strip()  # and says what went wrong
@@ -171,7 +171,7 @@ def test_a_bug_inside_precedent_exits_3_and_shows_where(tmp_path, monkeypatch, c
     """Python's own exit code for a crash is 1, which reads as WARN; a crash must fail CI instead."""
     (tmp_path / "change.diff").write_text(PIPED_TEXT)
     monkeypatch.setattr("precedent.surfaces.cli._graph", failing(RuntimeError("a bug")))
-    monkeypatch.setattr("precedent.surfaces.cli._checks", failing(RuntimeError("a bug")))
+    monkeypatch.setattr("precedent.service.read_bundle", failing(RuntimeError("a bug")))
 
     assert main(COMMANDS[command](tmp_path)) == 3
     err = capsys.readouterr().err
@@ -217,7 +217,7 @@ EVENT = {"tool_name": "Write", "tool_input": {"file_path": "/r/a.ts", "content":
 @pytest.mark.parametrize("error", ERRORS)
 def test_the_hook_still_fails_open_on_every_error(monkeypatch, capsys, error):
     """H3: Precedent's own errors never block an agent; the hook answers nothing and exits 0."""
-    monkeypatch.setattr("precedent.surfaces.cli._checks", failing(ERRORS[error]))
+    monkeypatch.setattr("precedent.service.read_bundle", failing(ERRORS[error]))
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(EVENT)))
 
     assert main(["check", "--hook"]) == 0

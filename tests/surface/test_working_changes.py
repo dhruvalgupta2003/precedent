@@ -38,7 +38,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     git_in(root)(["git", "init", "-q"])
     monkeypatch.chdir(root)
     monkeypatch.setattr("sys.stdin", io.StringIO(""))  # nothing piped in, no terminal
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
     return root
 
 

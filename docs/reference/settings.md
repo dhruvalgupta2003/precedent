@@ -16,9 +16,9 @@ You don't need any of these to start. Set them in your terminal (`export NAME=va
 
 - **Your decisions:** in the built-in database’s file, or on the server at `FALKORDB_URL`; one set per `--org` name. Nothing is deleted: when a decision changes, the old
   version gets an end date.
-- **What a check reads:** with the built-in database, in `bundles/<org>.json` next to its file, saved by each load
-  and only readable by you. It is a copy: Precedent builds it again from the database whenever it is missing or
-  damaged. With a server, nothing is saved.
+- **What a check reads:** with the built-in database, in `precedent.db.bundles/<org>.json` next to its file, saved
+  by each load and readable only by you. It is a copy: when it is missing, damaged or saved by another version,
+  checks read the database instead. With a server, nothing is saved.
 - **AI answers:** in the folder above, never in your project.
 - **The Claude Code setting:** `.claude/settings.local.json` in your project, or `~/.claude/settings.json` for all
   projects.

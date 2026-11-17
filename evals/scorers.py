@@ -65,31 +65,36 @@ def backstage() -> Graph:
 
 
 def folder_verdict(loads: list[dict[str, str]], diff: str, ai: list[dict] | None = None) -> str:
-    """Load a small folder of decisions into its own graph, once per file set (the folder holds exactly that set
-    each time, committed in a git repository so a deleted file can be proven deleted), check a diff against it,
-    then delete the graph. `ai` replays what a model answered for every note and document, so the checks on AI
-    findings run on the answers real models gave, at no cost."""
-    readers = service.Readers(adrs=replay(ai), docs=replay(ai)) if ai else service.Readers()
+    """Load a small folder of decisions into its own graph, check a diff against it, then delete the graph. `ai`
+    replays what a model answered for every note and document, so the checks on AI findings run on the answers real
+    models gave, at no cost."""
     graph = fresh(FOLDER_GRAPH)
     try:
         with tempfile.TemporaryDirectory() as root:
-            git(root, "init", "-q")
-            git(root, "remote", "add", "origin", "https://github.com/precedent-evals/fixture")
-            for files in loads:
-                for old in Path(root).iterdir():
-                    if old.name != ".git":
-                        old.unlink()
-                for name, text in files.items():
-                    (Path(root) / name).write_text(text)
-                git(root, "add", "-A")
-                git(root, "commit", "-q", "--allow-empty", "-m", "decisions")
-                service.ingest(graph, root, "team", readers)
+            load_folder(graph, Path(root), loads, ai)
         return service.preflight(service.compile_bundle(graph), changes(diff)).verdict
     except KnowledgeError as error:
         return f"REFUSED: {error}"  # the load stopped, and says why
     finally:
         if FOLDER_GRAPH in database().list_graphs():
             graph.delete()
+
+
+def load_folder(graph: Graph, root: Path, loads: list[dict[str, str]], ai: list[dict] | None = None) -> None:
+    """Load the folder once per file set: it holds exactly that set each time, committed in a git repository so a
+    deleted file can be proven deleted."""
+    readers = service.Readers(adrs=replay(ai), docs=replay(ai)) if ai else service.Readers()
+    git(str(root), "init", "-q")
+    git(str(root), "remote", "add", "origin", "https://github.com/precedent-evals/fixture")
+    for files in loads:
+        for old in root.iterdir():
+            if old.name != ".git":
+                old.unlink()
+        for name, text in files.items():
+            (root / name).write_text(text)
+        git(str(root), "add", "-A")
+        git(str(root), "commit", "-q", "--allow-empty", "-m", "decisions")
+        service.ingest(graph, str(root), "team", readers)
 
 
 def replay(answer: list[dict]) -> ScopeReader:

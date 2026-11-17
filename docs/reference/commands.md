@@ -72,8 +72,8 @@ load saved them.
 | `--org NAME` | which set of decisions to use (default: `team`) |
 
 With the built-in database, each load saves the rules a check needs in one file next to the database, so a check
-doesn't have to start the database. That file is only a copy: if it is missing, from another version of
-Precedent, or damaged, the next check builds it again from the database. With a database server
+doesn't have to start the database. That file is only a copy: if it is missing, damaged, or saved by another
+version of Precedent, checks read the database instead until the next load saves it again. With a database server
 (`FALKORDB_URL`), nothing is saved: every check reads the server, so a teammate's load counts straight away.
 
 Ends with `0`, or `3` when no decisions are loaded under that `--org`.

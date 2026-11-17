@@ -24,4 +24,9 @@ class NothingLoadedError(PrecedentError):
 
 
 class BundleError(PrecedentError):
-    """A saved bundle can't be read: damaged, or saved by another version. It is never used; it is built again."""
+    """A saved bundle can't be trusted: damaged, or not one this version wrote. It is never read; the check builds
+    what it needs from the database instead (ADR0025)."""
+
+
+class LoadRunningError(PrecedentError):
+    """Another load of the org is running, and loads never mix their writes."""

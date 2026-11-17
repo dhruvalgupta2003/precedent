@@ -4,6 +4,7 @@ import os
 from collections import Counter
 from collections.abc import Callable
 from datetime import UTC, datetime
+from importlib import metadata
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -11,7 +12,6 @@ from falkordb import Graph
 
 from precedent.adapters import bundle_file
 from precedent.adapters.falkor import (
-    built_in,
     connect,
     ensure_schema,
     found_quotes,
@@ -23,6 +23,7 @@ from precedent.adapters.falkor import (
     retire_gone,
     rules,
     save_decision,
+    uses_built_in,
 )
 from precedent.connectors import adr, folder
 from precedent.core.authority import Rule, Standing, resolve
@@ -39,6 +40,7 @@ if TYPE_CHECKING:
     from precedent.adapters.llm import Kind
 
 ScopeReader = Callable[[str], list[Scope]]
+VERSION = metadata.version("precedent")
 
 
 class Readers(NamedTuple):
@@ -95,79 +97,68 @@ def ingest(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> Ingest
 
 
 def load(graph: Graph, root: str, org: str, ai: Readers = Readers()) -> IngestReport:  # noqa: B008 (immutable)
-    """`ingest`, then save the bundle `check` reads (ADR0025), as one step no other load of the org can run inside.
-    With a server there is nothing to save: `checks` builds the bundle from it every time."""
+    """`ingest`, then save the bundle checks read (ADR0025), one load of the org at a time. The old bundle goes
+    first, so a load that fails or is killed half way leaves none, and checks read the database until a load ends.
+    With a server there is nothing to save."""
     if not _saves_bundles():
         return ingest(graph, root, org, ai)
     path = bundle_path(graph.name)
-    with bundle_file.locked(path) as last:
+    with bundle_file.locked(path):
+        path.unlink(missing_ok=True)
         report = ingest(graph, root, org, ai)
-        _save(graph, path, last)
+        bundle = compile_bundle(graph, Stamp(built_at=datetime.now(UTC), version=VERSION))
+        if bundle.loaded:  # an org with no decisions (a misspelled --org) gets no file
+            bundle_file.write(path, dump(bundle))
     return report
 
 
-def checks(org: str) -> Bundle:
-    """What a check reads. With the built-in database, the bundle the last load saved, so no database starts; it is
-    only a copy, so one that was never saved (an upgrade), is from another version or is damaged is built again from
-    the database. With a server, a teammate's load changes what is in force, so it is built from the server."""
-    if not _saves_bundles():
-        return compile_bundle(open_graph(org))
-    path = bundle_path(org)
-    if found := _saved(path):
-        return found
-    with bundle_file.locked(path) as last:
-        return _saved(path) or _save(open_graph(org), path, last)  # another load may have saved it meanwhile
+def read_bundle(org: str) -> Bundle:
+    """What a check reads: the bundle the last load saved, so no database starts. One it can't trust (none saved
+    yet, damaged, or saved by another version) is built from the database for this check; only a load saves. With
+    a server nothing is saved: a teammate's load changes what is in force."""
+    return (_saved(org) if _saves_bundles() else None) or compile_bundle(open_graph(org))
 
 
-def compile_bundle(graph: Graph, sequence: int = 0) -> Bundle:
-    """The org's rules, each told what replaces it, as one bundle. `loaded` tells an org with no decisions (an
-    error, #66) from one whose decisions check nothing yet."""
+def compile_bundle(graph: Graph, stamp: Stamp | None = None) -> Bundle:
+    """The org's rules, each told what replaces it. `loaded` tells an org with no decisions (an error, #66) from one
+    whose decisions check nothing yet."""
     found = rules(graph)
-    loaded = bool(found) or has_decisions(graph)
-    return build(graph.name, found, loaded=loaded, stamp=Stamp(sequence=sequence, built_at=datetime.now(UTC)))
+    return build(graph.name, found, loaded=bool(found) or has_decisions(graph), stamp=stamp)
 
 
 class Summary(NamedTuple):
     rules: int
     decisions: int  # those with a rule; a decision with nothing to check isn't in the bundle
     can_block: int
-    stamp: Stamp  # sequence 0: built from a server for this check, never saved
+    saved_at: datetime | None  # None: built from the database for this check
 
 
 def summary(bundle: Bundle) -> Summary:
-    """What a check reads (`precedent status`)."""
+    """`precedent status`: enough to see that the load you expect is the one a check reads."""
     found = _rules(bundle)
-    blocking = sum(r.may_block for r in found)
-    return Summary(len(found), len({r.decision for r in found}), blocking, bundle.stamp)
+    saved_at = bundle.stamp.built_at if bundle.stamp else None
+    return Summary(len(found), len({r.decision for r in found}), sum(r.may_block for r in found), saved_at)
 
 
 def bundle_path(org: str) -> Path:
-    """Next to the built-in database, so a bundle always belongs to the database it was built from."""
-    return database_path().parent / "bundles" / f"{org}.json"
+    """Beside the built-in database's file and named after it, so two databases never share a bundle."""
+    db = database_path()
+    return db.with_name(f"{db.name}.bundles") / f"{org}.json"
 
 
 def _saves_bundles() -> bool:
-    return built_in(os.environ.get("FALKORDB_URL"))
+    return uses_built_in(os.environ.get("FALKORDB_URL"))
 
 
-def _saved(path: Path) -> Bundle | None:
-    """The saved bundle, or None to build it again: a damaged copy is never read, and the database is the source."""
-    raw = bundle_file.read(path)
+def _saved(org: str) -> Bundle | None:
+    """The saved bundle if it can be trusted: whole, for this org, and saved by this version, because its rules are
+    saved already ranked and a fix to the ranking must not wait for the next load."""
+    raw = bundle_file.read(bundle_path(org))
     try:
-        return parse(raw) if raw is not None else None
+        found = parse(raw) if raw is not None else None
     except BundleError:
         return None
-
-
-def _save(graph: Graph, path: Path, last: int) -> Bundle:
-    """Number the bundle one more than any before it, then save it. An org with no decisions (a misspelled --org)
-    gets no file."""
-    saved = _saved(path)
-    bundle = compile_bundle(graph, max(last, saved.stamp.sequence if saved else 0) + 1)
-    if bundle.loaded:
-        bundle_file.record(path, bundle.stamp.sequence)
-        bundle_file.write(path, dump(bundle))
-    return bundle
+    return found if found and found.org == org and found.stamp and found.stamp.version == VERSION else None
 
 
 def _read_all(adr_folders: list[Path], root: Path, org: str, source: str) -> list[DecisionRecord]:
@@ -389,11 +380,8 @@ def project_root(cwd: Path) -> Path:
 
 
 def preflight(bundle: Bundle, changes: list[Change]) -> Report:
-    """Check a change against every live decision in the org (docs/spec.md §7): only the rules that could match it,
-    which gives the same report as checking them all (tests/unit/test_bundle.py)."""
-    _rules(bundle)
-    found = facts(changes)
-    return check(found, bundle.candidates(found))
+    """Check a change against every live decision in the org (docs/spec.md §7)."""
+    return check(facts(changes), _rules(bundle))
 
 
 def readers(model: str | None = None) -> Readers:

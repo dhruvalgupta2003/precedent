@@ -8,7 +8,6 @@ from functools import partial
 import pytest
 
 from precedent.core.authority import Rule, Standing
-from precedent.core.bundle import Stamp
 from precedent.core.doctor import StaleLine
 from precedent.core.errors import KnowledgeError
 from precedent.core.model import Scope
@@ -101,7 +100,7 @@ def report(verdict: str) -> Report:
 
 @pytest.mark.parametrize(("verdict", "code"), [("CLEAR", 0), ("WARN", 1), ("BLOCK", 2)])
 def test_check_exit_codes_follow_the_verdict(monkeypatch, capsys, verdict, code):
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
     monkeypatch.setattr("precedent.service.preflight", lambda bundle, changes: report(verdict))
     monkeypatch.setattr("sys.stdin", io.StringIO("+++ b/a.ts\n+import m from 'moment';\n"))
 
@@ -110,7 +109,7 @@ def test_check_exit_codes_follow_the_verdict(monkeypatch, capsys, verdict, code)
 
 
 def test_the_hook_prints_claude_code_json_and_exits_0(monkeypatch, capsys):
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
     monkeypatch.setattr("precedent.service.preflight", lambda bundle, changes: report("WARN"))
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(EVENT)))
 
@@ -154,7 +153,7 @@ def test_doctor_prints_each_stale_line_and_exits_1(tmp_path, monkeypatch, capsys
         decision_quote="move away from node-fetch",
         source="adr014.md",
     )
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
     monkeypatch.setattr("precedent.service.doctor", lambda bundle, project, reader: ([tmp_path / "CLAUDE.md"], [stale]))
 
     assert main(["doctor", "--org", "backstage", "--project", str(tmp_path), "--no-ai"]) == 1
@@ -164,7 +163,7 @@ def test_doctor_prints_each_stale_line_and_exits_1(tmp_path, monkeypatch, capsys
 
 
 def test_doctor_says_so_when_every_instruction_file_is_current(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
     monkeypatch.setattr("precedent.service.doctor", lambda bundle, project, reader: ([tmp_path / "CLAUDE.md"], []))
 
     assert main(["doctor", "--org", "backstage", "--project", str(tmp_path), "--no-ai"]) == 0
@@ -209,7 +208,7 @@ def test_check_with_nothing_piped_in_checks_this_repos_changes_and_new_files(tmp
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "b.ts").write_text("import tz from 'moment-timezone';\n")
     seen = []
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
     monkeypatch.setattr("precedent.service.preflight", lambda bundle, changes: seen.extend(changes) or report("CLEAR"))
     monkeypatch.setattr("sys.stdin", Terminal())
     monkeypatch.chdir(tmp_path / "src")  # from a subfolder too: paths stay relative to the repo root
@@ -232,7 +231,7 @@ def test_check_outside_a_git_repo_says_how_to_give_it_a_change(tmp_path, monkeyp
 
 def test_the_org_defaults_to_team_or_precedent_org(monkeypatch):
     used = []
-    monkeypatch.setattr("precedent.surfaces.cli._checks", used.append)
+    monkeypatch.setattr("precedent.service.read_bundle", used.append)
     monkeypatch.setattr("precedent.service.preflight", lambda bundle, changes: report("CLEAR"))
     monkeypatch.setattr("sys.stdin", io.StringIO("+++ b/a.ts\n+x\n"))
 
@@ -285,7 +284,7 @@ def test_the_hook_reads_the_file_being_edited_for_what_it_already_imports(tmp_pa
     (tmp_path / "a.ts").write_text("import moment from 'moment';\n")
     edit = {"old_string": "}", "new_string": "  return moment(day);\n}", "file_path": str(tmp_path / "a.ts")}
     seen = []
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
     monkeypatch.setattr("precedent.service.preflight", lambda bundle, changes: seen.extend(changes) or report("CLEAR"))
     monkeypatch.setattr(
         "sys.stdin", io.StringIO(json.dumps({"tool_name": "Edit", "tool_input": edit, "cwd": str(tmp_path)}))
@@ -305,7 +304,7 @@ def test_check_reads_changed_files_but_never_one_outside_the_project(tmp_path, m
     outside.write_text("import secret from 'secret';\n")
     seen = []
     monkeypatch.chdir(project)
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
     monkeypatch.setattr("precedent.service.preflight", lambda bundle, changes: seen.extend(changes) or report("CLEAR"))
     diff = "+++ b/a.ts\n+moment();\n+++ b/../secret.ts\n+x\n+++ b/gone.ts\n+y\n+++ b/locked.ts\n+z\n"
     monkeypatch.setattr("sys.stdin", io.StringIO(diff))
@@ -318,7 +317,7 @@ def test_check_reads_changed_files_but_never_one_outside_the_project(tmp_path, m
 def test_a_path_the_system_cannot_open_never_hides_the_verdict(tmp_path, monkeypatch, path):
     """A crash would exit 1, the same as WARN, and hide a BLOCK elsewhere in the diff."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
     monkeypatch.setattr("precedent.service.preflight", lambda bundle, changes: report("BLOCK"))
     monkeypatch.setattr("sys.stdin", io.StringIO(f"+++ b/{path}\n+x\n+++ b/a.ts\n+import m from 'moment';\n"))
 
@@ -330,7 +329,7 @@ def test_a_very_large_file_is_checked_as_if_new(tmp_path, monkeypatch):
     (tmp_path / "big.js").write_text("import moment from 'moment';\n" + "x\n" * 600_000)
     seen = []
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
     monkeypatch.setattr("precedent.service.preflight", lambda bundle, changes: seen.extend(changes) or report("CLEAR"))
     monkeypatch.setattr("sys.stdin", io.StringIO("+++ b/big.js\n+moment();\n"))
 
@@ -361,7 +360,7 @@ def test_why_prints_the_winner_and_each_reason(monkeypatch, capsys):
         scope=Scope(kind="package", value="moment", polarity="avoid", quote="we moved to Luxon"),
         source="decisions/0002-use-luxon.md",
     )
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
     monkeypatch.setattr(
         "precedent.service.why",
         lambda bundle, name: {("package", "moment"): [Standing(rule, "wins", "reviewed and in force")]},
@@ -375,7 +374,7 @@ def test_why_prints_the_winner_and_each_reason(monkeypatch, capsys):
 
 
 def test_why_about_something_nobody_decided_says_so_and_exits_1(monkeypatch, capsys):
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
     monkeypatch.setattr("precedent.service.why", lambda bundle, name: {})
 
     assert main(["why", "graphql"]) == 1
@@ -411,32 +410,31 @@ def test_load_says_nothing_about_planted_text_when_there_is_none(tmp_path, monke
 
 
 AGES = [
-    (timedelta(seconds=20), "saved just now"),
-    (timedelta(minutes=1), "saved 1 minute ago"),
-    (timedelta(minutes=59), "saved 59 minutes ago"),
-    (timedelta(hours=2), "saved 2 hours ago"),
-    (timedelta(days=3, hours=5), "saved 3 days ago"),
+    (timedelta(seconds=20), "Saved just now"),
+    (timedelta(minutes=1), "Saved 1 minute ago"),
+    (timedelta(minutes=59), "Saved 59 minutes ago"),
+    (timedelta(hours=2), "Saved 2 hours ago"),
+    (timedelta(days=3, hours=5), "Saved 3 days ago"),
 ]
 
 
 @pytest.mark.parametrize(("age", "said"), AGES, ids=["seconds", "minute", "minutes", "hours", "days"])
 def test_status_says_what_a_check_reads_and_how_old_it_is(monkeypatch, capsys, age, said):
-    stamp = Stamp(sequence=4, built_at=datetime.now(UTC) - age)
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
-    monkeypatch.setattr("precedent.service.summary", lambda bundle: Summary(3, 2, 1, stamp))
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
+    monkeypatch.setattr("precedent.service.summary", lambda bundle: Summary(3, 2, 1, datetime.now(UTC) - age))
 
     assert main(["status", "--org", "acme"]) == 0
-    out = capsys.readouterr().out
-    assert out.startswith("3 rules from 2 decisions in org 'acme'; 1 can stop a change.\n")
-    assert f"Bundle 4, {said} by the last load." in out
+    assert capsys.readouterr().out.splitlines() == [
+        "3 rules from 2 decisions in org 'acme'; 1 can stop a change.",
+        f"{said} by the last load.",
+    ]
 
 
-def test_status_with_a_server_says_every_check_reads_it(monkeypatch, capsys):
-    stamp = Stamp(sequence=0, built_at=datetime.now(UTC))
-    monkeypatch.setattr("precedent.surfaces.cli._checks", lambda org: None)
-    monkeypatch.setattr("precedent.service.summary", lambda bundle: Summary(1, 1, 0, stamp))
+def test_status_says_when_each_check_reads_the_database(monkeypatch, capsys):
+    monkeypatch.setattr("precedent.service.read_bundle", lambda org: None)
+    monkeypatch.setattr("precedent.service.summary", lambda bundle: Summary(1, 1, 0, None))
 
     assert main(["status"]) == 0
     out = capsys.readouterr().out
     assert out.startswith("1 rule from 1 decision in org 'team'; 0 can stop a change.\n")
-    assert "Read from the database server on every check" in out
+    assert "Read from the database for each check" in out

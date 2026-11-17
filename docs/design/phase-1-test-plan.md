@@ -103,30 +103,32 @@ New: `core/checks.py`, `core/places.py`, `connectors/checks_file.py`. Nothing re
 
 ## PR 1b: the local bundle (done, ADR0025)
 
-New: `core/bundle.py` (the model, canonical bytes, hash and index) and `adapters/bundle_file.py` (atomic writes and
-the lock). `precedent load` saves the bundle; `check`, the hook, `why` and `doctor` read it. `precedent status`
-shows it.
+New: `core/bundle.py` (the model, canonical bytes and hash) and `adapters/bundle_file.py` (whole writes and the
+lock). `precedent load` saves the bundle; `check`, the hook, `why`, `doctor` and `precedent status` read it.
 
 **What changed from the plan, and why**
 - **The bundle is built from the database at the end of each load, not from the git tree.** The graph holds what
   several loads built up: other repositories loaded with `--source`, decisions retired only once their deletion is
   committed, and decisions an AI found. A builder from git alone comes with `checks.yaml` and `promotions.yaml`
   (1c), which hold all of that as files.
-- **A missing, older or damaged bundle is built again from the database, never refused.** In local mode the
-  database is the source, so rebuilding is always right, and refusing would leave the hook letting every edit
-  through. With no database either, `check` exits 3 as before.
-- **With a server (`FALKORDB_URL`), nothing is saved:** every check builds the bundle from the server, so a
-  teammate's load counts at once.
+- **A bundle a check can't trust is never read, and never refused:** the check reads the database instead. That
+  covers none saved, changed, another format, another org, and another version of Precedent, whose rules were
+  ranked by other code. With no database either, `check` exits 3 as before. Only a load saves, so a check never
+  waits on a load.
+- **With a server (`FALKORDB_URL`), nothing is saved:** every check reads the server, so a teammate's load counts
+  at once.
+- **No sequence number:** nothing reads one, and the hash tells bundles apart.
+- **The index moved to 1d**, with the speed gate. A first version lost path rules ending in `//` and Windows
+  backslash paths, and at today's sizes it saved nothing measurable. 1d's property test must cover those inputs.
 
 **Tested**
-- Determinism (I6): any rule order, locale, umask, LF or CRLF, and checkout path give one hash. A decision file is
-  named by its path in the repo. A document loaded by an absolute path still keeps that path (ADR0025).
-- The hash changes for every field of a rule, and not for the stamp (number and time).
-- Every kind of damage, and another version, is refused by the reader, then rebuilt and still blocks.
-- The number goes up with every load, and survives a damaged bundle and a lost lock file.
-- The index: a table, and a property test that the report equals checking every rule.
-- A failed write leaves the old bundle whole; the file is the owner's alone; a second load waits, then stops with a
-  clear message; a misspelled org leaves no bundle behind.
+- Determinism (I6): any rule order, LF or CRLF, and checkout path give one hash. A decision file is named by its
+  path in the repo. A document loaded by an absolute path still keeps that path (ADR0025).
+- The hash changes for every field of a rule, and not for the stamp (time and version).
+- Every kind of damage is refused by the reader. A bundle that can't be trusted is never read, and the check still
+  blocks from the database.
+- A check never saves or locks; a load that fails half way leaves no bundle; a failed write leaves the old one
+  whole; files are the owner's alone; a second load waits, then stops with a clear message.
 - The gate: every preflight, hard and safety eval case, and every integration scenario, gives the same report
   through the bundle (saved and read back) as through the database alone. Eval scores are unchanged.
 
@@ -168,6 +170,9 @@ against the real evaluator. That is about 3,000 rows.
 
 - A local evaluator process holds the repo's bundle slice. The hook talks to it over a socket in the user's own
   folder, with permissions 0600. It falls back to a cold run.
+- The bundle's index, by package and by the folder a path rule starts with, moved here from 1b. Its property
+  test (the same report as checking every rule) must cover path values ending in `/` or `//`, backslash paths,
+  and very long paths.
 - A benchmark gate in CI fails the build when p95 over 1,000 synthetic edits passes 150 ms warm or 500 ms cold, on a
   50,000-check bundle.
 - Edge cases:

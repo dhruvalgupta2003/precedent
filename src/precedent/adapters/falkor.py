@@ -30,7 +30,7 @@ def connect(url: str | None, path: Path) -> FalkorDB:
     return built_in_client(str(path), retry=Retry(NoBackoff(), 0))
 
 
-def built_in(url: str | None) -> bool:
+def uses_built_in(url: str | None) -> bool:
     """Whether `connect` uses the built-in database: no server named, and precedent[embedded] installed."""
     return not url and _built_in_client() is not None
 
