@@ -34,16 +34,16 @@ dev = [
     "falkordblite>=0.11.0; sys_platform != 'win32'",  # the demo and the embedded test run need it
     "codespell>=2.4.3",
     "deptry>=0.25.1",
-    "hypothesis>=6.170.14",
-    "import-linter>=2.15",
+    "hypothesis>=6.170.15",
+    "import-linter>=2.16",
     "pytest",
     "pytest-cov>=7.1.0",
-    "pytest-randomly>=5.0.0",
+    "pytest-randomly>=5.1.0",
     "pytest-xdist>=3.8.0",
     "ruff",
-    "ty>=0.0.97",
+    "ty>=0.0.104",
 ]
-docs = ["zensical==0.1.0"]  # the docs website (zensical.toml); `make docs`
+docs = ["zensical==0.1.1"]  # the docs website (zensical.toml); `make docs`
 
 [build-system]
 requires = ["hatchling"]
